@@ -10,8 +10,13 @@ interface Props {
   onClose: () => void
   /** null = creation, populated = edition */
   user: UserWithRoles | null
-  /** Called after a successful save. */
-  onSaved: () => void
+  /**
+   * Called after a successful save. The optional `message` argument
+   * is a human-readable confirmation to display (e.g. "X a été ajouté
+   * à vos équipes"). When `undefined`, the caller can decide whether
+   * to show a generic toast.
+   */
+  onSaved: (message?: string) => void
 }
 
 /**
@@ -76,6 +81,14 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
       .then(([rolesJson, teamsJson]) => {
         setRoles(rolesJson.data || [])
         setTeams(teamsJson.data || [])
+
+        // ---- Creation mode: auto-select the single managed team ----
+        // If the caller is not Admin global and has exactly one managed
+        // team, preselect it so they don't need to tick it.
+        if (!user && callerManagedTeamIds !== "ALL" && callerManagedTeamIds.size === 1) {
+          const singleTeamId = Array.from(callerManagedTeamIds)[0]
+          setTeamRoleNames(new Map([[singleTeamId, new Set<string>()]]))
+        }
       })
       .catch(() => setError("Impossible de charger les rôles et équipes"))
 
@@ -108,9 +121,9 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
       setPhone("")
       setStatus("active")
       setGlobalRoleNames(new Set())
-      setTeamRoleNames(new Map())
+      // teamRoleNames is seeded above (auto-select single team) if applicable.
     }
-  }, [open, user])
+  }, [open, user, callerManagedTeamIds])
 
   const globalRoles = useMemo(() => roles.filter((r) => r.scope === "global"), [roles])
   const teamScopedRoles = useMemo(() => roles.filter((r) => r.scope === "team"), [roles])
@@ -163,6 +176,19 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
     return null
   }
 
+  /**
+   * Build the { teamId: [role names] } object from the local state,
+   * filtered to the teams the caller is allowed to touch.
+   */
+  function buildTeamRolesPayload(): Record<string, string[]> {
+    const out: Record<string, string[]> = {}
+    for (const [teamId, set] of teamRoleNames.entries()) {
+      if (callerManagedTeamIds !== "ALL" && !callerManagedTeamIds.has(teamId)) continue
+      out[teamId] = Array.from(set)
+    }
+    return out
+  }
+
   async function handleSave() {
     setError(null)
     const err = validateStep1()
@@ -174,45 +200,60 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
 
     setSaving(true)
     try {
-      let userId = user?.id
+      const teamRoles = buildTeamRolesPayload()
 
       if (isCreation) {
-        const createRes = await fetch("/api/users", {
+        // Single call: the backend handles create-or-upsert and attaches
+        // the requested teams + roles in one go.
+        const body: Record<string, unknown> = {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          email: email.trim(),
+          phone: phone.trim() || null,
+          password,
+          team_roles: teamRoles,
+        }
+        if (isCallerAdminGlobal) {
+          body.global_roles = Array.from(globalRoleNames)
+        }
+        const res = await fetch("/api/users", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            first_name: firstName.trim(),
-            last_name: lastName.trim(),
-            email: email.trim(),
-            phone: phone.trim() || null,
-            password,
-          }),
+          body: JSON.stringify(body),
         })
-        const createJson = await createRes.json().catch(() => ({}))
-        if (!createRes.ok) throw new Error(createJson.error || "Erreur création")
-        userId = createJson.data.id
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json.error || "Erreur création")
+
+        // Build a user-facing feedback message based on the flags.
+        const payload = json.data || {}
+        const fullName = `${firstName.trim()} ${lastName.trim()}`
+        let message: string | undefined
+        if (payload.created) {
+          message = `${fullName} a été créé et ajouté à vos équipes.`
+        } else if (payload.already_in_teams) {
+          message = `${fullName} existe déjà dans vos équipes. Ses rôles ont été mis à jour.`
+        } else {
+          message = `${fullName} existait déjà. Il a été ajouté à vos équipes.`
+        }
+
+        onSaved(message)
+        return
       }
 
-      if (!userId) throw new Error("User id manquant")
+      // Edit mode: PATCH the existing user.
+      const userId = user!.id
       const patchBody: Record<string, unknown> = {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         email: email.trim(),
         phone: phone.trim() || null,
+        status,
+        team_roles: teamRoles,
       }
-      if (!isCreation) {
-        patchBody.status = status
-        if (password) patchBody.password = password
-      }
+      if (password) patchBody.password = password
       if (isCallerAdminGlobal) {
         patchBody.global_roles = Array.from(globalRoleNames)
       }
-      const teamRoleObj: Record<string, string[]> = {}
-      for (const [teamId, set] of teamRoleNames.entries()) {
-        if (callerManagedTeamIds !== "ALL" && !callerManagedTeamIds.has(teamId)) continue
-        teamRoleObj[teamId] = Array.from(set)
-      }
-      patchBody.team_roles = teamRoleObj
 
       const patchRes = await fetch(`/api/users/${userId}`, {
         method: "PATCH",
@@ -223,7 +264,6 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
       if (!patchRes.ok) throw new Error(patchJson.error || "Erreur mise à jour")
 
       onSaved()
-      onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur")
     } finally {

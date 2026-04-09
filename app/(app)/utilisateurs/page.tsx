@@ -1,17 +1,28 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { groupRolesByTeam, type UserWithRoles } from "@/lib/types"
 import UserFormPanel from "@/components/UserFormPanel"
 
 export default function UsersPage() {
-  const { hasRole } = useAuth()
+  const { user: caller, hasRole } = useAuth()
   const isAdminGlobal = hasRole("Admin global")
+
+  // A Team manager on at least one team can also create users.
+  const isTeamManagerSomewhere = useMemo(
+    () =>
+      (caller?.role_assignments ?? []).some(
+        (a) => a.role === "Team manager" && a.teamId !== null
+      ),
+    [caller]
+  )
+  const canCreateUsers = isAdminGlobal || isTeamManagerSomewhere
 
   const [users, setUsers] = useState<UserWithRoles[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [flash, setFlash] = useState<string | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<UserWithRoles | null>(null)
@@ -57,7 +68,7 @@ export default function UsersPage() {
             Gérez les accès et les rôles des utilisateurs
           </p>
         </div>
-        {isAdminGlobal && (
+        {canCreateUsers && (
           <button
             onClick={openCreate}
             className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm"
@@ -73,6 +84,17 @@ export default function UsersPage() {
       {error && (
         <div className="bg-rose/10 text-rose text-sm px-4 py-3 rounded-lg mb-4">
           {error}
+        </div>
+      )}
+      {flash && (
+        <div className="bg-vert-eau/20 text-brun text-sm px-4 py-3 rounded-lg mb-4 flex items-start gap-2">
+          <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span>{flash}</span>
+          <button type="button" onClick={() => setFlash(null)} className="ml-auto text-brun-light hover:text-brun">
+            ✕
+          </button>
         </div>
       )}
 
@@ -188,8 +210,9 @@ export default function UsersPage() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         user={editingUser}
-        onSaved={() => {
+        onSaved={(message) => {
           setDialogOpen(false)
+          if (message) setFlash(message)
           void loadUsers()
         }}
       />
