@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { groupRolesByTeam, type UserWithRoles } from "@/lib/types"
-import UserFormDialog from "@/components/UserFormDialog"
+import UserFormPanel from "@/components/UserFormPanel"
 
 export default function UsersPage() {
   const { hasRole } = useAuth()
@@ -156,7 +156,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      <UserFormDialog
+      <UserFormPanel
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         user={editingUser}
