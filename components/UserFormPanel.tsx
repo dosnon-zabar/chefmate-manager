@@ -271,6 +271,19 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
     }
   }
 
+  // ----- Derived state for button disablement -----
+  // Step 1 is valid when validateStep1() returns null. We call it on every
+  // render (it's a cheap synchronous predicate).
+  const step1Valid = validateStep1() === null
+
+  // A non-admin caller MUST have at least one team selected before the
+  // creation can go through. Admin global is allowed to create a user
+  // without any team (they can attribute only global roles for instance).
+  const atLeastOneTeamSelected = teamRoleNames.size > 0
+  const submitEnabled = isCreation
+    ? isCallerAdminGlobal || atLeastOneTeamSelected
+    : true
+
   // ----- Header chip + footer -----
   const titleAside =
     isCreation ? (
@@ -303,15 +316,11 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
         <button
           type="button"
           onClick={() => {
-            const err = validateStep1()
-            if (err) setError(err)
-            else {
-              setError(null)
-              setStep(2)
-            }
+            setError(null)
+            setStep(2)
           }}
-          disabled={saving}
-          className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm disabled:opacity-50"
+          disabled={saving || !step1Valid}
+          className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Suivant
         </button>
@@ -319,8 +328,8 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm disabled:opacity-50"
+          disabled={saving || !submitEnabled}
+          className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? "Enregistrement..." : isCreation ? "Créer" : "Enregistrer"}
         </button>
@@ -463,17 +472,25 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
               </div>
             )}
 
-            <div className={isCallerAdminGlobal && globalRoles.length > 0 ? "border-t border-brun/10 pt-5" : ""}>
-              <h3 className="font-semibold text-brun mb-1">Rôles par équipe</h3>
-              <p className="text-xs text-brun-light mb-3">
-                Sélectionnez l&apos;équipe puis les rôles à attribuer dessus.
-              </p>
+            {(() => {
+              // Label simplified when the caller only manages a single team:
+              // "Rôles par équipe" becomes just "Rôles", and the sub-text
+              // doesn't mention team selection since there's nothing to pick.
+              const hasMultipleTeams = selectableTeams.length > 1
+              const sectionTitle = hasMultipleTeams ? "Rôles par équipe" : "Rôles"
+              const sectionHelp = hasMultipleTeams
+                ? "Sélectionnez l'équipe puis les rôles à attribuer dessus."
+                : "Sélectionner les rôles pour cet utilisateur."
+              return (
+                <div className={isCallerAdminGlobal && globalRoles.length > 0 ? "border-t border-brun/10 pt-5" : ""}>
+                  <h3 className="font-semibold text-brun mb-1">{sectionTitle}</h3>
+                  <p className="text-xs text-brun-light mb-3">{sectionHelp}</p>
 
-              {selectableTeams.length === 0 ? (
-                <p className="text-xs text-brun-light italic">
-                  Aucune équipe disponible.
-                </p>
-              ) : (
+                  {selectableTeams.length === 0 ? (
+                    <p className="text-xs text-brun-light italic">
+                      Aucune équipe disponible.
+                    </p>
+                  ) : (
                 <>
                   <div className="space-y-2 mb-3">
                     {selectableTeams.map((team) => {
@@ -530,9 +547,11 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
                         })}
                     </div>
                   )}
-                </>
-              )}
-            </div>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
           </>
         )}
       </div>
