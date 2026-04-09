@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@/lib/auth/auth-context"
 import type { Role, Team, UserWithRoles } from "@/lib/types"
 import SidePanel from "./SidePanel"
@@ -66,6 +66,12 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
   const [globalRoleNames, setGlobalRoleNames] = useState<Set<string>>(new Set())
   const [teamRoleNames, setTeamRoleNames] = useState<Map<string, Set<string>>>(new Map())
 
+  // Snapshot of the team memberships the target user had when the panel
+  // opened. Used in edit mode to compute which teams must be detached at
+  // save time (initial - current). Only meaningful for teams the caller
+  // can touch.
+  const initialTeamIdsRef = useRef<Set<string>>(new Set())
+
   const isCreation = !user
 
   useEffect(() => {
@@ -101,6 +107,8 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
 
       const globals = new Set<string>()
       const teamMap = new Map<string, Set<string>>()
+
+      // Seed with team-scoped roles first
       for (const ur of user.user_roles) {
         const roleName = ur.role?.name
         if (!roleName) continue
@@ -112,8 +120,21 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
           teamMap.set(ur.team_id, set)
         }
       }
+
+      // Also seed bare memberships (user_teams without any team-scoped
+      // role). Those show up as "member without role" in the UI and must
+      // have their checkbox ticked so the user can explicitly untick them
+      // to detach the membership.
+      for (const ut of user.user_teams || []) {
+        if (!ut.team) continue
+        if (!teamMap.has(ut.team.id)) {
+          teamMap.set(ut.team.id, new Set<string>())
+        }
+      }
+
       setGlobalRoleNames(globals)
       setTeamRoleNames(teamMap)
+      initialTeamIdsRef.current = new Set(teamMap.keys())
     } else {
       setFirstName("")
       setLastName("")
@@ -121,6 +142,7 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
       setPhone("")
       setStatus("active")
       setGlobalRoleNames(new Set())
+      initialTeamIdsRef.current = new Set()
       // teamRoleNames is seeded above (auto-select single team) if applicable.
     }
   }, [open, user, callerManagedTeamIds])
@@ -242,6 +264,23 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
 
       // Edit mode: PATCH the existing user.
       const userId = user!.id
+
+      // Compute teams to detach: teams that were in the initial snapshot
+      // but are no longer in the current teamRoleNames map. Only teams the
+      // caller can actually touch are listed (the backend also enforces
+      // this, but filtering here keeps the payload clean).
+      const detachTeams: string[] = []
+      for (const initialTeamId of initialTeamIdsRef.current) {
+        if (teamRoleNames.has(initialTeamId)) continue
+        if (
+          callerManagedTeamIds !== "ALL" &&
+          !callerManagedTeamIds.has(initialTeamId)
+        ) {
+          continue
+        }
+        detachTeams.push(initialTeamId)
+      }
+
       const patchBody: Record<string, unknown> = {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
@@ -249,6 +288,9 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
         phone: phone.trim() || null,
         status,
         team_roles: teamRoles,
+      }
+      if (detachTeams.length > 0) {
+        patchBody.detach_teams = detachTeams
       }
       if (password) patchBody.password = password
       if (isCallerAdminGlobal) {
