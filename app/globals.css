@@ -50,3 +50,32 @@ h1, h2, h3, h4 {
 .animate-slide-in {
   animation: slide-in 0.25s ease-out;
 }
+
+/* Pill-shaped status select with a custom chevron.
+   Using appearance:none lets us draw our own arrow via background-image
+   so we can space it properly from the right edge — native arrows sit
+   flush against the border otherwise. */
+.status-pill-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  border: 0;
+  border-radius: 9999px;
+  padding: 0.25rem 1.6rem 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%233D3229'><path fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z' clip-rule='evenodd'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 0.85rem 0.85rem;
+}
+.status-pill-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(232, 121, 43, 0.3);
+}
+.status-pill-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

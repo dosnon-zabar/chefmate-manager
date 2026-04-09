@@ -23,9 +23,16 @@ interface Props {
  * Slide-in side panel for creating / editing a user.
  *
  * Behaviour:
- *  - Creation mode → 2-step wizard:
- *      Step 1 = base infos + password (with confirmation always visible)
- *      Step 2 = global roles (Admin global only) and per-team roles
+ *  - Creation mode → 3-step wizard:
+ *      Step 1 = email only. Clicking "Suivant" hits
+ *               GET /api/users/by-email to check existence.
+ *               * If no user with that email → step 2.
+ *               * If a user exists → we skip directly to step 3 (roles),
+ *                 pre-filled with the existing user's infos. The save
+ *                 becomes an upsert that also reactivates the user if
+ *                 they were inactive/deleted.
+ *      Step 2 = name + phone + password (only for fresh creations)
+ *      Step 3 = global roles (Admin global only) and per-team roles
  *  - Edition mode → single page with everything visible
  *
  * Permission scoping:
@@ -47,9 +54,18 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
     return ids
   }, [caller, isCallerAdminGlobal])
 
-  const [step, setStep] = useState<1 | 2>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [saving, setSaving] = useState(false)
+  const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // When step 1 finds a matching email, we stash the existing user's id
+  // and status here. This flags the wizard as "upsert" (skip step 2) and
+  // lets us decide whether we need to send status='active' to reactivate.
+  const [existingUserId, setExistingUserId] = useState<string | null>(null)
+  const [existingUserStatus, setExistingUserStatus] = useState<
+    "active" | "inactive" | "deleted" | null
+  >(null)
 
   // Base infos
   const [firstName, setFirstName] = useState("")
@@ -80,6 +96,8 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
     setError(null)
     setPassword("")
     setConfirmPassword("")
+    setExistingUserId(null)
+    setExistingUserStatus(null)
     Promise.all([
       fetch("/api/roles").then((r) => (r.ok ? r.json() : { data: [] })),
       fetch("/api/teams").then((r) => (r.ok ? r.json() : { data: [] })),
@@ -187,15 +205,103 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
     })
   }
 
-  function validateStep1(): string | null {
+  // ---- Validation per step ----
+
+  function isValidEmail(value: string): boolean {
+    // Minimal sanity check. The server is the source of truth.
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+  }
+
+  function validateStep1Email(): string | null {
+    if (!email.trim()) return "Email obligatoire"
+    if (!isValidEmail(email)) return "Email invalide"
+    return null
+  }
+
+  function validateStep2Infos(): string | null {
+    if (!firstName.trim() || !lastName.trim()) return "Prénom et nom obligatoires"
+    if (!password) return "Mot de passe obligatoire pour un nouvel utilisateur"
+    if (password.length < 6) {
+      return "Le mot de passe doit contenir au moins 6 caractères"
+    }
+    if (password !== confirmPassword) return "Les mots de passe ne correspondent pas"
+    return null
+  }
+
+  /**
+   * Edit mode validator — used by the single-page edit form and by
+   * handleSave() to gate the final PATCH call. Passwords are only
+   * validated when the user actually typed one.
+   */
+  function validateEditForm(): string | null {
     if (!firstName.trim() || !lastName.trim()) return "Prénom et nom obligatoires"
     if (!email.trim()) return "Email obligatoire"
-    if (isCreation && !password) return "Mot de passe obligatoire pour un nouvel utilisateur"
     if (password && password.length < 6) {
       return "Le mot de passe doit contenir au moins 6 caractères"
     }
-    if (password && password !== confirmPassword) return "Les mots de passe ne correspondent pas"
+    if (password && password !== confirmPassword) {
+      return "Les mots de passe ne correspondent pas"
+    }
     return null
+  }
+
+  /**
+   * Handle the "Suivant" button on step 1. Calls the by-email endpoint
+   * and either jumps to step 2 (new user) or step 3 (existing user).
+   */
+  async function handleEmailCheck() {
+    setError(null)
+    const err = validateStep1Email()
+    if (err) {
+      setError(err)
+      return
+    }
+
+    setChecking(true)
+    try {
+      const res = await fetch(
+        `/api/users/by-email?email=${encodeURIComponent(email.trim())}`
+      )
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la vérification")
+
+      // Admin global receives the full identity payload; non-admins get
+      // a minimal { id, status } shape because the backend refuses to
+      // leak first_name/last_name/phone across team scopes (see
+      // docs/user-management.md §5.3).
+      const payload = (json.data || {}) as {
+        exists?: boolean
+        user?: {
+          id: string
+          first_name?: string
+          last_name?: string
+          email?: string
+          phone?: string | null
+          status: "active" | "inactive" | "deleted"
+        }
+      }
+
+      if (payload.exists && payload.user) {
+        setExistingUserId(payload.user.id)
+        setExistingUserStatus(payload.user.status)
+        // Only pre-fill the fields we actually received. For a non-admin
+        // caller the wizard will show "Cet email existe déjà" without
+        // revealing any identity info, and the POST upsert will leave
+        // the target row's base infos untouched on their behalf.
+        setFirstName(payload.user.first_name || "")
+        setLastName(payload.user.last_name || "")
+        setPhone(payload.user.phone || "")
+        setStep(3)
+      } else {
+        setExistingUserId(null)
+        setExistingUserStatus(null)
+        setStep(2)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur")
+    } finally {
+      setChecking(false)
+    }
   }
 
   /**
@@ -213,11 +319,38 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
 
   async function handleSave() {
     setError(null)
-    const err = validateStep1()
-    if (err) {
-      setError(err)
-      setStep(1)
-      return
+
+    // Final validation depends on the mode.
+    if (isCreation) {
+      // In wizard flow, step 2 may have been skipped for existing users,
+      // so we only validate names/passwords on the "fresh creation" path.
+      // For an upsert on an existing user:
+      //  - Admin global gets the full identity payload from by-email, so
+      //    first_name/last_name are pre-filled and will be refreshed by
+      //    the backend. We require them to be non-empty.
+      //  - A non-admin caller gets only { id, status } from by-email and
+      //    will not mutate the target's infos anyway. Empty names are
+      //    expected and fine on this path.
+      if (!existingUserId) {
+        const err = validateStep2Infos()
+        if (err) {
+          setError(err)
+          setStep(2)
+          return
+        }
+      } else if (
+        isCallerAdminGlobal &&
+        (!firstName.trim() || !lastName.trim())
+      ) {
+        setError("Prénom et nom obligatoires")
+        return
+      }
+    } else {
+      const err = validateEditForm()
+      if (err) {
+        setError(err)
+        return
+      }
     }
 
     setSaving(true)
@@ -232,8 +365,13 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
           last_name: lastName.trim(),
           email: email.trim(),
           phone: phone.trim() || null,
-          password,
           team_roles: teamRoles,
+        }
+        if (password) body.password = password
+        // Reactivation: when the existing row is not active, ask the API
+        // to flip its status back to 'active' as part of the upsert.
+        if (existingUserId && existingUserStatus && existingUserStatus !== "active") {
+          body.status = "active"
         }
         if (isCallerAdminGlobal) {
           body.global_roles = Array.from(globalRoleNames)
@@ -246,12 +384,19 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
         const json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(json.error || "Erreur création")
 
-        // Build a user-facing feedback message based on the flags.
+        // Build a user-facing feedback message based on the flags. For
+        // a non-admin upsert on an unseen user, we don't know the name —
+        // fall back to the email.
         const payload = json.data || {}
-        const fullName = `${firstName.trim()} ${lastName.trim()}`
+        const fullName =
+          firstName.trim() || lastName.trim()
+            ? `${firstName.trim()} ${lastName.trim()}`.trim()
+            : email.trim()
         let message: string | undefined
         if (payload.created) {
           message = `${fullName} a été créé et ajouté à vos équipes.`
+        } else if (existingUserStatus && existingUserStatus !== "active") {
+          message = `${fullName} a été réactivé et ses rôles ont été mis à jour.`
         } else if (payload.already_in_teams) {
           message = `${fullName} existe déjà dans vos équipes. Ses rôles ont été mis à jour.`
         } else {
@@ -286,8 +431,11 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
         last_name: lastName.trim(),
         email: email.trim(),
         phone: phone.trim() || null,
-        status,
         team_roles: teamRoles,
+      }
+      // Status is an Admin-global-only concern (backend also enforces it).
+      if (isCallerAdminGlobal) {
+        patchBody.status = status
       }
       if (detachTeams.length > 0) {
         patchBody.detach_teams = detachTeams
@@ -314,9 +462,8 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
   }
 
   // ----- Derived state for button disablement -----
-  // Step 1 is valid when validateStep1() returns null. We call it on every
-  // render (it's a cheap synchronous predicate).
-  const step1Valid = validateStep1() === null
+  const step1Valid = validateStep1Email() === null
+  const step2Valid = validateStep2Infos() === null
 
   // A non-admin caller MUST have at least one team selected before the
   // creation can go through. Admin global is allowed to create a user
@@ -326,21 +473,60 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
     ? isCallerAdminGlobal || atLeastOneTeamSelected
     : true
 
-  // ----- Header chip + footer -----
+  // ----- Header chip + subtitle -----
+  // Total number of steps depends on whether we're creating a fresh user
+  // (3 steps) or upserting an existing one (we jump 1 → 3 so we display
+  // "Étape 2/2" on the roles screen to match the user's perception).
+  const totalSteps = existingUserId ? 2 : 3
+  const displayedStep = existingUserId && step === 3 ? 2 : step
+
   const titleAside =
     isCreation ? (
       <span className="text-xs font-normal text-brun-light bg-creme-dark px-2 py-1 rounded">
-        Étape {step}/2
+        Étape {displayedStep}/{totalSteps}
       </span>
     ) : null
 
+  const subtitle = isCreation
+    ? step === 1
+      ? "Adresse email"
+      : step === 2
+        ? "Informations et mot de passe"
+        : existingUserId
+          ? "Rôles à attribuer"
+          : "Rôles globaux et par équipe"
+    : "Modifiez les informations et les rôles"
+
+  // ----- Footer buttons -----
   const footer = (
     <>
-      {isCreation && step === 2 && (
+      {isCreation && step > 1 && (
         <button
           type="button"
-          onClick={() => setStep(1)}
-          disabled={saving}
+          onClick={() => {
+            setError(null)
+            // From step 3, going back for an existing user returns to
+            // step 1 (we never visited step 2) so the caller can retype
+            // a different email. For a fresh creation we hop back one.
+            if (step === 3 && existingUserId) {
+              // Clear stale upsert data: the caller is about to type a
+              // new email, we must not leak the previous lookup's name,
+              // phone, password, or selected roles into the next flow.
+              setExistingUserId(null)
+              setExistingUserStatus(null)
+              setFirstName("")
+              setLastName("")
+              setPhone("")
+              setPassword("")
+              setConfirmPassword("")
+              setStep(1)
+            } else if (step === 3) {
+              setStep(2)
+            } else {
+              setStep(1)
+            }
+          }}
+          disabled={saving || checking}
           className="px-4 py-2 text-sm text-brun-light hover:text-brun transition-colors"
         >
           Précédent
@@ -349,24 +535,35 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
       <button
         type="button"
         onClick={onClose}
-        disabled={saving}
+        disabled={saving || checking}
         className="px-4 py-2 text-sm text-brun-light hover:text-brun transition-colors"
       >
         Annuler
       </button>
-      {isCreation && step === 1 ? (
+      {isCreation && step === 1 && (
+        <button
+          type="button"
+          onClick={handleEmailCheck}
+          disabled={checking || !step1Valid}
+          className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {checking ? "Vérification..." : "Suivant"}
+        </button>
+      )}
+      {isCreation && step === 2 && (
         <button
           type="button"
           onClick={() => {
             setError(null)
-            setStep(2)
+            setStep(3)
           }}
-          disabled={saving || !step1Valid}
+          disabled={saving || !step2Valid}
           className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Suivant
         </button>
-      ) : (
+      )}
+      {((isCreation && step === 3) || !isCreation) && (
         <button
           type="button"
           onClick={handleSave}
@@ -384,13 +581,7 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
       open={open}
       onClose={onClose}
       title={isCreation ? "Nouvel utilisateur" : "Modifier l'utilisateur"}
-      subtitle={
-        isCreation
-          ? step === 1
-            ? "Informations de base"
-            : "Rôles globaux et par équipe"
-          : "Modifiez les informations et les rôles"
-      }
+      subtitle={subtitle}
       titleAside={titleAside}
       footer={footer}
       width="md"
@@ -402,8 +593,91 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
           </div>
         )}
 
-        {/* ================= Step 1 / Edit base infos ================= */}
-        {(step === 1 || !isCreation) && (
+        {/* ================= Step 1 — Email only ================= */}
+        {isCreation && step === 1 && (
+          <>
+            <p className="text-sm text-brun-light">
+              Saisissez l&apos;adresse email de l&apos;utilisateur. S&apos;il existe
+              déjà, vous pourrez lui attribuer des rôles sur vos équipes ; sinon
+              vous renseignerez ses informations à l&apos;étape suivante.
+            </p>
+            <Field label="Email" required>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && step1Valid && !checking) {
+                    e.preventDefault()
+                    void handleEmailCheck()
+                  }
+                }}
+                className={INPUT_CLASS}
+                autoFocus
+              />
+            </Field>
+          </>
+        )}
+
+        {/* ================= Step 2 — Infos (fresh creation only) ================= */}
+        {isCreation && step === 2 && (
+          <>
+            <div className="bg-creme text-brun-light text-xs px-3 py-2 rounded">
+              <span className="font-medium text-brun">{email.trim()}</span> —
+              aucun utilisateur existant. Complétez les informations ci-dessous.
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Prénom" required>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              </Field>
+              <Field label="Nom" required>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              </Field>
+            </div>
+
+            <Field label="Téléphone">
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Mot de passe" required>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              </Field>
+              <Field label="Confirmer le mot de passe" required>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              </Field>
+            </div>
+          </>
+        )}
+
+        {/* ================= Edit mode — single page base infos ================= */}
+        {!isCreation && (
           <>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Prénom" required>
@@ -443,21 +717,18 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field
-                label={isCreation ? "Mot de passe" : "Nouveau mot de passe"}
-                required={isCreation}
-              >
+              <Field label="Nouveau mot de passe">
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className={INPUT_CLASS}
-                  placeholder={isCreation ? "" : "Laisser vide pour ne pas changer"}
+                  placeholder="Laisser vide pour ne pas changer"
                 />
               </Field>
               <Field
                 label="Confirmer le mot de passe"
-                required={isCreation || password.length > 0}
+                required={password.length > 0}
               >
                 <input
                   type="password"
@@ -468,7 +739,7 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
               </Field>
             </div>
 
-            {!isCreation && (
+            {isCallerAdminGlobal && (
               <Field label="Statut">
                 <select
                   value={status}
@@ -477,18 +748,46 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
                 >
                   <option value="active">Actif</option>
                   <option value="inactive">Inactif</option>
-                  {isCallerAdminGlobal && <option value="deleted">Supprimé</option>}
+                  <option value="deleted">Supprimé</option>
                 </select>
               </Field>
             )}
           </>
         )}
 
-        {/* ================= Step 2 / Edit roles ================= */}
-        {(step === 2 || !isCreation) && (
+        {/* ================= Step 3 / Edit roles section ================= */}
+        {((isCreation && step === 3) || !isCreation) && (
           <>
+            {isCreation && existingUserId && (
+              <div className="bg-vert-eau/20 text-brun text-xs px-3 py-2 rounded">
+                {firstName || lastName ? (
+                  <>
+                    <span className="font-medium">
+                      {firstName} {lastName}
+                    </span>{" "}
+                    ({email.trim()}) existe déjà
+                  </>
+                ) : (
+                  <>
+                    L&apos;email{" "}
+                    <span className="font-medium">{email.trim()}</span> est
+                    déjà associé à un utilisateur
+                  </>
+                )}
+                {existingUserStatus && existingUserStatus !== "active" && (
+                  <>
+                    {" "}—{" "}
+                    {isCallerAdminGlobal
+                      ? "il sera réactivé en l'ajoutant à vos équipes"
+                      : "seul un Admin global peut le réactiver"}
+                  </>
+                )}
+                .
+              </div>
+            )}
+
             {isCallerAdminGlobal && globalRoles.length > 0 && (
-              <div className="border-t border-brun/10 pt-5">
+              <div className={!isCreation ? "border-t border-brun/10 pt-5" : ""}>
                 <h3 className="font-semibold text-brun mb-1">Rôles globaux</h3>
                 <p className="text-xs text-brun-light mb-3">
                   S&apos;appliquent à toute la plateforme.
