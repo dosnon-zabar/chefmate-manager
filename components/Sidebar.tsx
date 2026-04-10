@@ -402,7 +402,7 @@ export default function Sidebar() {
             className="flex-shrink-0 text-white/40 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/5"
           >
             <svg
-              className="w-4 h-4"
+              className="w-5 h-5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
