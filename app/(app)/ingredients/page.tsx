@@ -34,6 +34,7 @@ interface ConversionRef {
 interface Ingredient {
   id: string
   name: string
+  name_en: string | null
   description: string | null
   default_unit_id: string | null
   default_aisle_id: string | null
@@ -66,6 +67,7 @@ export default function IngredientsPage() {
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null)
   const [formName, setFormName] = useState("")
+  const [formNameEn, setFormNameEn] = useState("")
   const [formDescription, setFormDescription] = useState("")
   const [formDefaultUnitId, setFormDefaultUnitId] = useState("")
   const [formDefaultAisleId, setFormDefaultAisleId] = useState("")
@@ -188,6 +190,7 @@ export default function IngredientsPage() {
   function openCreate(preselectedAisleId?: string) {
     setEditingIngredient(null)
     setFormName("")
+    setFormNameEn("")
     setFormDescription("")
     setFormDefaultUnitId("")
     setFormDefaultAisleId(preselectedAisleId || "")
@@ -200,6 +203,7 @@ export default function IngredientsPage() {
   function openEdit(ing: Ingredient) {
     setEditingIngredient(ing)
     setFormName(ing.name)
+    setFormNameEn(ing.name_en || "")
     setFormDescription(ing.description || "")
     setFormDefaultUnitId(ing.default_unit_id || "")
     setFormDefaultAisleId(ing.default_aisle_id || "")
@@ -228,6 +232,7 @@ export default function IngredientsPage() {
     try {
       const body: Record<string, unknown> = {
         name: formName.trim(),
+        name_en: formNameEn.trim() || null,
         description: formDescription.trim() || null,
         default_unit_id: formDefaultUnitId || null,
         default_aisle_id: formDefaultAisleId || null,
@@ -342,6 +347,17 @@ export default function IngredientsPage() {
         key={ing.id}
         className="flex items-center gap-3 py-1.5 px-3 rounded hover:bg-creme/50 group"
       >
+        {ing.name_en && (
+          <img
+            src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(ing.name_en)}-Small.png`}
+            alt=""
+            className="w-6 h-6 object-contain flex-shrink-0"
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none"
+            }}
+          />
+        )}
         <span className="text-sm text-brun flex-1">{ing.name}</span>
         {ing.default_unit && (
           <span className="text-[10px] text-brun-light bg-creme px-1.5 py-0.5 rounded">
@@ -606,6 +622,33 @@ export default function IngredientsPage() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-brun mb-1">
+              Nom anglais
+              <span className="font-normal text-brun-light ml-1">(pour l&apos;image)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={formNameEn}
+                onChange={(e) => setFormNameEn(e.target.value)}
+                className={INPUT_CLASS}
+                placeholder="Tomato, Onion, Carrot..."
+              />
+              {formNameEn && (
+                <img
+                  src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(formNameEn.trim())}-Small.png`}
+                  alt=""
+                  className="w-10 h-10 object-contain flex-shrink-0 rounded border border-brun/10 bg-white p-0.5"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = ""
+                    ;(e.target as HTMLImageElement).style.display = "none"
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-brun mb-1">Description</label>
             <textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} rows={2} className={INPUT_CLASS} />
           </div>
@@ -785,93 +828,90 @@ export default function IngredientsPage() {
             return (
               <div
                 key={idx}
-                className="flex items-center gap-2 bg-creme rounded-lg p-3"
+                className="bg-creme rounded-lg p-3"
               >
-                <span className="text-xs text-brun-light flex-shrink-0">
-                  1
-                </span>
-                <select
-                  value={row.source_unit_id}
-                  onChange={(e) =>
-                    setConvRows((prev) =>
-                      prev.map((r, i) =>
-                        i === idx
-                          ? { ...r, source_unit_id: e.target.value }
-                          : r
+                <div className="grid grid-cols-[1fr_auto_auto_1fr_auto] items-center gap-2">
+                  <select
+                    value={row.source_unit_id}
+                    onChange={(e) =>
+                      setConvRows((prev) =>
+                        prev.map((r, i) =>
+                          i === idx
+                            ? { ...r, source_unit_id: e.target.value }
+                            : r
+                        )
                       )
-                    )
-                  }
-                  className={INPUT_CLASS + " flex-1"}
-                >
-                  <option value="">Source</option>
-                  {ingUnits.map((u) => (
-                    <option key={u!.id} value={u!.id}>
-                      {u!.name} ({u!.abbreviation})
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs text-brun-light flex-shrink-0">
-                  =
-                </span>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={row.conversion_factor}
-                  onChange={(e) =>
-                    setConvRows((prev) =>
-                      prev.map((r, i) =>
-                        i === idx
-                          ? {
-                              ...r,
-                              conversion_factor:
-                                parseFloat(e.target.value) || 0,
-                            }
-                          : r
-                      )
-                    )
-                  }
-                  className={INPUT_CLASS + " w-20"}
-                />
-                <select
-                  value={row.target_unit_id}
-                  onChange={(e) =>
-                    setConvRows((prev) =>
-                      prev.map((r, i) =>
-                        i === idx
-                          ? { ...r, target_unit_id: e.target.value }
-                          : r
-                      )
-                    )
-                  }
-                  className={INPUT_CLASS + " flex-1"}
-                >
-                  <option value="">Cible</option>
-                  {ingUnits.map((u) => (
-                    <option key={u!.id} value={u!.id}>
-                      {u!.name} ({u!.abbreviation})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => removeConvRow(idx)}
-                  className="text-brun-light hover:text-rose transition-colors p-1 flex-shrink-0"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.75}
+                    }
+                    className={INPUT_CLASS}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
+                    <option value="">Source</option>
+                    {ingUnits.map((u) => (
+                      <option key={u!.id} value={u!.id}>
+                        {u!.abbreviation}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-brun-light">=</span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={row.conversion_factor}
+                    onChange={(e) =>
+                      setConvRows((prev) =>
+                        prev.map((r, i) =>
+                          i === idx
+                            ? {
+                                ...r,
+                                conversion_factor:
+                                  parseFloat(e.target.value) || 0,
+                              }
+                            : r
+                        )
+                      )
+                    }
+                    className={INPUT_CLASS + " w-24 text-center"}
+                  />
+                  <select
+                    value={row.target_unit_id}
+                    onChange={(e) =>
+                      setConvRows((prev) =>
+                        prev.map((r, i) =>
+                          i === idx
+                            ? { ...r, target_unit_id: e.target.value }
+                            : r
+                        )
+                      )
+                    }
+                    className={INPUT_CLASS}
+                  >
+                    <option value="">Cible</option>
+                    {ingUnits.map((u) => (
+                      <option key={u!.id} value={u!.id}>
+                        {u!.abbreviation}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => removeConvRow(idx)}
+                    className="text-brun-light hover:text-rose transition-colors p-1"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.75}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
             )
           })}
