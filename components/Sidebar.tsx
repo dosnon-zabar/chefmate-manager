@@ -198,6 +198,12 @@ const NAV: Section[] = [
         icon: "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z",
         visible: canSeeAdminArea,
       },
+    ],
+  },
+  {
+    label: "Évolutions",
+    visible: canSeeAdminArea,
+    items: [
       {
         href: "/notes-evolution",
         label: "Notes d'évolution",
@@ -205,8 +211,8 @@ const NAV: Section[] = [
         visible: canSeeAdminArea,
       },
       {
-        id: "ref-admin",
-        label: "Référentiels admin",
+        id: "ref-evols",
+        label: "Référentiels évols",
         icon: "M4 6h16M4 12h16M4 18h16",
         visible: canSeeAdminArea,
         children: [
