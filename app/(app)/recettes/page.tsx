@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 
 interface TeamRef {
@@ -25,6 +26,28 @@ interface Recipe {
   updated_at: string
 }
 
+/**
+ * Extract image URL from the recipe images array.
+ * Images are stored as objects { id, nom, url, ... } where url is
+ * relative to the admin (/api/images/recipes/xxx.jpg). We construct
+ * the full URL using the admin domain.
+ */
+function getRecipeImageUrl(images: unknown): string | null {
+  if (!Array.isArray(images) || images.length === 0) return null
+  const img = images[0]
+  if (typeof img === "string") return img
+  if (img && typeof img === "object" && "url" in img) {
+    const url = (img as { url: string }).url
+    // In prod, use the admin domain; in dev, localhost:3000
+    const adminBase =
+      typeof window !== "undefined" && window.location.hostname !== "localhost"
+        ? "https://chefmate-admin.zabar.fr"
+        : "http://localhost:3000"
+    return `${adminBase}${url}`
+  }
+  return null
+}
+
 const STATUS_LABELS: Record<string, { label: string; bg: string; text: string }> = {
   brouillon: { label: "Brouillon", bg: "bg-brun/10", text: "text-brun-light" },
   non_publiee: { label: "Non publiée", bg: "bg-jaune/20", text: "text-brun" },
@@ -32,6 +55,7 @@ const STATUS_LABELS: Record<string, { label: string; bg: string; text: string }>
 }
 
 export default function RecettesPage() {
+  const router = useRouter()
   const { hasRole } = useAuth()
   const isAdmin = hasRole("Admin global")
 
@@ -103,11 +127,19 @@ export default function RecettesPage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <h1 className="font-serif text-3xl text-brun">Recettes</h1>
-        <p className="text-sm text-brun-light mt-1">
-          {filteredRecipes.length} recette{filteredRecipes.length !== 1 ? "s" : ""}
-        </p>
+      <header className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="font-serif text-3xl text-brun">Recettes</h1>
+          <p className="text-sm text-brun-light mt-1">
+            {filteredRecipes.length} recette{filteredRecipes.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <button
+          onClick={() => router.push("/recettes/new")}
+          className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm"
+        >
+          + Nouvelle recette
+        </button>
       </header>
 
       {/* Filters */}
@@ -230,15 +262,13 @@ export default function RecettesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredRecipes.map((recipe) => {
             const statusInfo = STATUS_LABELS[recipe.status] || STATUS_LABELS.brouillon
-            const firstImage =
-              Array.isArray(recipe.images) && recipe.images.length > 0
-                ? recipe.images[0]
-                : null
+            const firstImage = getRecipeImageUrl(recipe.images)
 
             return (
               <div
                 key={recipe.id}
-                className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer"
+                onClick={() => router.push(`/recettes/${recipe.id}`)}
               >
                 {/* Image */}
                 <div className="aspect-[16/10] bg-creme relative">
@@ -298,45 +328,36 @@ export default function RecettesPage() {
                     </p>
                   )}
 
-                  {/* Tags + seasons */}
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {recipe.recipe_seasons?.map((rs) =>
-                      rs.season ? (
-                        <span
-                          key={rs.season.id}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-creme text-brun-light"
-                        >
-                          {rs.season.icon} {rs.season.name}
-                        </span>
-                      ) : null
-                    )}
-                    {recipe.recipe_tags?.map((rt) =>
-                      rt.tag ? (
-                        <span
-                          key={rt.tag.id}
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{
-                            backgroundColor: rt.tag.color + "20",
-                            color: rt.tag.color,
-                          }}
-                        >
-                          {rt.tag.name}
-                        </span>
-                      ) : null
-                    )}
-                  </div>
-
-                  {/* Footer: servings + ingredient count */}
-                  <div className="flex items-center justify-between text-[10px] text-brun-light pt-2 border-t border-brun/5">
-                    <span>
-                      {recipe.serving_count}{" "}
-                      {recipe.serving_count <= 1 ? "personne" : "personnes"}
-                    </span>
-                    <span>
-                      {recipe.ingredients?.length || 0} ingrédient
-                      {(recipe.ingredients?.length || 0) !== 1 ? "s" : ""}
-                    </span>
-                  </div>
+                  {/* Seasons + Tags */}
+                  {((recipe.recipe_seasons?.length ?? 0) > 0 ||
+                    (recipe.recipe_tags?.length ?? 0) > 0) && (
+                    <div className="flex flex-wrap gap-1 pt-2 border-t border-brun/5">
+                      {recipe.recipe_seasons?.map((rs) =>
+                        rs.season ? (
+                          <span
+                            key={rs.season.id}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-creme text-brun-light"
+                          >
+                            {rs.season.icon} {rs.season.name}
+                          </span>
+                        ) : null
+                      )}
+                      {recipe.recipe_tags?.map((rt) =>
+                        rt.tag ? (
+                          <span
+                            key={rt.tag.id}
+                            className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                            style={{
+                              backgroundColor: rt.tag.color + "20",
+                              color: rt.tag.color,
+                            }}
+                          >
+                            {rt.tag.name}
+                          </span>
+                        ) : null
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )
