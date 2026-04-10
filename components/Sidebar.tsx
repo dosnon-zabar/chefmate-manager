@@ -274,8 +274,12 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-brun min-h-screen p-6 flex-shrink-0 flex flex-col sticky top-0">
       <div className="mb-8">
-        <span className="font-serif text-xl text-white">Chefmate</span>
-        <span className="block text-[10px] uppercase tracking-[0.2em] text-white/40">
+        <img
+          src="/chefmate-logo.svg"
+          alt="ChefMate"
+          className="h-8 brightness-0 invert"
+        />
+        <span className="block text-[10px] uppercase tracking-[0.2em] text-white/40 mt-1">
           Manager
         </span>
       </div>

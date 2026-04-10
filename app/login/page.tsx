@@ -41,9 +41,13 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="font-serif text-3xl text-brun">Chefmate Manager</h1>
-          <p className="text-sm text-brun-light mt-2">
-            Connectez-vous pour accéder à l&apos;administration
+          <img
+            src="/chefmate-logo.svg"
+            alt="ChefMate"
+            className="h-10 mx-auto mb-3"
+          />
+          <p className="text-xs uppercase tracking-[0.2em] text-brun-light/60">
+            Manager
           </p>
         </div>
 
