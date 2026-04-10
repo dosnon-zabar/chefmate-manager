@@ -23,14 +23,24 @@ interface SeasonRef { id: string; name: string; icon: string }
 interface TagRef { id: string; name: string; color: string }
 interface TeamRef { id: string; name: string }
 
+interface MasterIngredient {
+  id: string
+  name: string
+  name_en: string | null
+  default_unit_id: string | null
+  default_aisle_id: string | null
+}
+
 interface RecipeIngredient {
   id: string
   name: string
   quantity: number | null
   sort_order: number
   comment: string | null
+  ingredient_master_id: string | null
   unit: UnitRef | null
   aisle: AisleRef | null
+  master: MasterIngredient | null
 }
 
 interface RecipeStep {
@@ -95,6 +105,9 @@ export default function RecipeEditPage() {
   const [allUnits, setAllUnits] = useState<UnitRef[]>([])
   const [allAisles, setAllAisles] = useState<AisleRef[]>([])
 
+  // Catalog ingredients for autocomplete
+  const [catalogIngredients, setCatalogIngredients] = useState<MasterIngredient[]>([])
+
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -119,6 +132,12 @@ export default function RecipeEditPage() {
         fetch("/api/tags").then(r => r.json()).then(j => setAllTags(j.data ?? [])).catch(() => {}),
         fetch("/api/units").then(r => r.json()).then(j => setAllUnits(j.data ?? [])).catch(() => {}),
         fetch("/api/aisles").then(r => r.json()).then(j => setAllAisles(j.data ?? [])).catch(() => {}),
+        fetch("/api/ingredients").then(r => r.json()).then(j => setCatalogIngredients(
+          (j.data ?? []).map((i: Record<string, unknown>) => ({
+            id: i.id, name: i.name, name_en: i.name_en,
+            default_unit_id: i.default_unit_id, default_aisle_id: i.default_aisle_id,
+          }))
+        )).catch(() => {}),
       ])
       setLoading(false)
     }
@@ -218,6 +237,7 @@ export default function RecipeEditPage() {
         recipe={recipe}
         allUnits={allUnits}
         allAisles={allAisles}
+        catalogIngredients={catalogIngredients}
         onPatch={patchRecipe}
         onRefresh={loadRecipe}
       />
@@ -569,18 +589,24 @@ function IngredientSection({
   recipe,
   allUnits,
   allAisles,
+  catalogIngredients,
   onPatch,
   onRefresh,
 }: {
   recipe: Recipe
   allUnits: UnitRef[]
   allAisles: AisleRef[]
+  catalogIngredients: MasterIngredient[]
   onPatch: (body: Record<string, unknown>) => Promise<boolean>
   onRefresh: () => Promise<void>
 }) {
   const { showToast } = useToast()
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([])
   const [saving, setSaving] = useState(false)
+
+  // Autocomplete state per row
+  const [acOpen, setAcOpen] = useState<number | null>(null)
+  const [acFilter, setAcFilter] = useState("")
 
   useEffect(() => {
     setIngredients(
@@ -597,20 +623,51 @@ function IngredientSection({
         quantity: null,
         sort_order: prev.length,
         comment: null,
+        ingredient_master_id: null,
         unit: null,
         aisle: null,
+        master: null,
       },
     ])
   }
 
-  function updateIngredient(idx: number, field: string, value: unknown) {
+  function updateIngredient(idx: number, updates: Partial<RecipeIngredient>) {
     setIngredients((prev) =>
-      prev.map((ing, i) => (i === idx ? { ...ing, [field]: value } : ing))
+      prev.map((ing, i) => (i === idx ? { ...ing, ...updates } : ing))
     )
+  }
+
+  function selectFromCatalog(idx: number, master: MasterIngredient) {
+    const defaultUnit = allUnits.find((u) => u.id === master.default_unit_id) || null
+    updateIngredient(idx, {
+      name: master.name,
+      ingredient_master_id: master.id,
+      master,
+      unit: defaultUnit,
+    })
+    setAcOpen(null)
+    setAcFilter("")
   }
 
   function removeIngredient(idx: number) {
     setIngredients((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  // Drag and drop reorder
+  function handleDragStart(e: React.DragEvent, idx: number) {
+    e.dataTransfer.setData("text/plain", String(idx))
+  }
+
+  function handleDrop(e: React.DragEvent, targetIdx: number) {
+    e.preventDefault()
+    const fromIdx = parseInt(e.dataTransfer.getData("text/plain"))
+    if (isNaN(fromIdx) || fromIdx === targetIdx) return
+    setIngredients((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(targetIdx, 0, moved)
+      return next
+    })
   }
 
   async function saveIngredients() {
@@ -622,6 +679,7 @@ function IngredientSection({
         quantity: i.quantity,
         unit_id: i.unit?.id || null,
         aisle_id: i.aisle?.id || null,
+        ingredient_master_id: i.ingredient_master_id || null,
         comment: i.comment || null,
         sort_order: idx,
       }))
@@ -631,6 +689,13 @@ function IngredientSection({
     }
     setSaving(false)
   }
+
+  // Filtered catalog for autocomplete
+  const acResults = acFilter.length >= 2
+    ? catalogIngredients
+        .filter((c) => c.name.toLowerCase().includes(acFilter.toLowerCase()))
+        .slice(0, 8)
+    : []
 
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm">
@@ -660,50 +725,117 @@ function IngredientSection({
           Aucun ingrédient. Cliquez sur + Ajouter.
         </p>
       ) : (
-        <div className="space-y-2">
-          {ingredients.map((ing, idx) => (
-            <div key={ing.id} className="grid grid-cols-[1fr_80px_120px_auto] gap-2 items-center">
-              <input
-                type="text"
-                value={ing.name}
-                onChange={(e) => updateIngredient(idx, "name", e.target.value)}
-                placeholder="Nom de l'ingrédient"
-                className={INPUT_CLASS + " text-xs"}
-              />
-              <input
-                type="number"
-                step="any"
-                value={ing.quantity ?? ""}
-                onChange={(e) =>
-                  updateIngredient(idx, "quantity", e.target.value ? parseFloat(e.target.value) : null)
-                }
-                placeholder="Qté"
-                className={INPUT_CLASS + " text-xs text-center"}
-              />
-              <select
-                value={ing.unit?.id || ""}
-                onChange={(e) => {
-                  const u = allUnits.find((u) => u.id === e.target.value) || null
-                  updateIngredient(idx, "unit", u)
-                }}
-                className={INPUT_CLASS + " text-xs"}
+        <div className="space-y-1">
+          {ingredients.map((ing, idx) => {
+            const nameEn = ing.master?.name_en
+            return (
+              <div
+                key={ing.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, idx)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => handleDrop(e, idx)}
+                className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
               >
-                <option value="">Unité</option>
-                {allUnits.map((u) => (
-                  <option key={u.id} value={u.id}>{u.abbreviation}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => removeIngredient(idx)}
-                className="text-brun-light hover:text-rose transition-colors p-1"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                {/* Drag handle */}
+                <svg className="w-3.5 h-3.5 text-brun-light/30 cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" />
+                  <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                  <circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
                 </svg>
-              </button>
-            </div>
-          ))}
+
+                {/* TheMealDB image */}
+                {nameEn ? (
+                  <img
+                    src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(nameEn)}-Small.png`}
+                    alt=""
+                    className="w-6 h-6 object-contain flex-shrink-0"
+                    loading="lazy"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+                  />
+                ) : (
+                  <span className="w-6 h-6 flex-shrink-0" />
+                )}
+
+                {/* Name with autocomplete */}
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={ing.name}
+                    onChange={(e) => {
+                      updateIngredient(idx, { name: e.target.value, ingredient_master_id: null, master: null })
+                      setAcOpen(idx)
+                      setAcFilter(e.target.value)
+                    }}
+                    onFocus={() => { setAcOpen(idx); setAcFilter(ing.name) }}
+                    onBlur={() => setTimeout(() => setAcOpen(null), 200)}
+                    placeholder="Nom de l'ingrédient"
+                    className={INPUT_CLASS + " text-xs"}
+                  />
+                  {acOpen === idx && acResults.length > 0 && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-brun/10 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {acResults.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={() => selectFromCatalog(idx, c)}
+                          className="w-full text-left px-3 py-1.5 text-xs text-brun hover:bg-creme flex items-center gap-2"
+                        >
+                          {c.name_en && (
+                            <img
+                              src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(c.name_en)}-Small.png`}
+                              alt=""
+                              className="w-5 h-5 object-contain"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+                            />
+                          )}
+                          <span>{c.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quantity */}
+                <input
+                  type="number"
+                  step="any"
+                  value={ing.quantity ?? ""}
+                  onChange={(e) =>
+                    updateIngredient(idx, { quantity: e.target.value ? parseFloat(e.target.value) : null })
+                  }
+                  placeholder="Qté"
+                  className={INPUT_CLASS + " w-20 text-xs text-center"}
+                />
+
+                {/* Unit */}
+                <select
+                  value={ing.unit?.id || ""}
+                  onChange={(e) => {
+                    const u = allUnits.find((u) => u.id === e.target.value) || null
+                    updateIngredient(idx, { unit: u })
+                  }}
+                  className={INPUT_CLASS + " w-24 text-xs"}
+                >
+                  <option value="">Unité</option>
+                  {allUnits.map((u) => (
+                    <option key={u.id} value={u.id}>{u.abbreviation}</option>
+                  ))}
+                </select>
+
+                {/* Remove */}
+                <button
+                  type="button"
+                  onClick={() => removeIngredient(idx)}
+                  className="text-brun-light hover:text-rose transition-colors p-0.5 opacity-0 group-hover:opacity-100"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
