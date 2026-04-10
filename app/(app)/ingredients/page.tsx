@@ -22,6 +22,15 @@ interface UnitRef {
   abbreviation: string
 }
 
+interface ConversionRef {
+  id: string
+  source_unit_id: string
+  target_unit_id: string
+  conversion_factor: number
+  source_unit: UnitRef | null
+  target_unit: UnitRef | null
+}
+
 interface Ingredient {
   id: string
   name: string
@@ -33,6 +42,7 @@ interface Ingredient {
   default_aisle: AisleRef | null
   ingredient_aisles: Array<{ id: string; aisle: AisleRef | null }>
   ingredient_units: Array<{ id: string; unit: UnitRef | null }>
+  ingredient_conversions: ConversionRef[]
 }
 
 const INPUT_CLASS =
@@ -64,6 +74,14 @@ export default function IngredientsPage() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  // Conversions panel
+  const [convPanelOpen, setConvPanelOpen] = useState(false)
+  const [convIngredient, setConvIngredient] = useState<Ingredient | null>(null)
+  const [convRows, setConvRows] = useState<
+    Array<{ source_unit_id: string; target_unit_id: string; conversion_factor: number }>
+  >([])
+  const [savingConv, setSavingConv] = useState(false)
+
   // Delete
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deletingIngredient, setDeletingIngredient] = useState<Ingredient | null>(null)
@@ -85,8 +103,11 @@ export default function IngredientsPage() {
         unitsRes.json(),
       ])
       setIngredients(ingJson.data ?? [])
-      setAisles(aislesJson.data ?? [])
+      const loadedAisles = aislesJson.data ?? []
+      setAisles(loadedAisles)
       setUnits(unitsJson.data ?? [])
+      // Start with all rayons collapsed
+      setCollapsedIds(new Set(loadedAisles.map((a: AisleRef) => a.id)))
     } catch {
       // silent
     } finally {
@@ -264,6 +285,55 @@ export default function IngredientsPage() {
     }
   }
 
+  // ----- Conversions -----
+
+  function openConversions(ing: Ingredient) {
+    setConvIngredient(ing)
+    setConvRows(
+      (ing.ingredient_conversions || []).map((c) => ({
+        source_unit_id: c.source_unit_id,
+        target_unit_id: c.target_unit_id,
+        conversion_factor: c.conversion_factor,
+      }))
+    )
+    setConvPanelOpen(true)
+  }
+
+  function addConvRow() {
+    setConvRows((prev) => [
+      ...prev,
+      { source_unit_id: "", target_unit_id: "", conversion_factor: 1 },
+    ])
+  }
+
+  function removeConvRow(idx: number) {
+    setConvRows((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  async function saveConversions() {
+    if (!convIngredient) return
+    setSavingConv(true)
+    try {
+      const validRows = convRows.filter(
+        (r) => r.source_unit_id && r.target_unit_id && r.conversion_factor > 0
+      )
+      const res = await fetch(`/api/ingredients/${convIngredient.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversions: validRows }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || "Erreur")
+      showToast("Conversions enregistrées.")
+      setConvPanelOpen(false)
+      void loadData()
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Erreur", "error")
+    } finally {
+      setSavingConv(false)
+    }
+  }
+
   // ----- Render helpers -----
 
   function renderIngredientRow(ing: Ingredient) {
@@ -278,6 +348,22 @@ export default function IngredientsPage() {
             {ing.default_unit.abbreviation}
           </span>
         )}
+        {/* Conversion button — visible when 2+ units linked */}
+        {canWrite &&
+          (ing.ingredient_units?.length ?? 0) >= 2 && (
+            <button
+              type="button"
+              onClick={() => openConversions(ing)}
+              title="Conversions d'unités"
+              className="text-brun-light/40 hover:text-orange transition-colors p-0.5"
+            >
+              {/* Scale / balance icon */}
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1.5M12 19.5V21M3 12h1.5M19.5 12H21M5.636 5.636l1.06 1.06M17.303 17.303l1.06 1.06M5.636 18.364l1.06-1.06M17.303 6.697l1.06-1.06" />
+                <circle cx="12" cy="12" r="4" />
+              </svg>
+            </button>
+          )}
         {canWrite && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
@@ -331,7 +417,7 @@ export default function IngredientsPage() {
           className={`flex items-center gap-2 py-2 px-3 rounded cursor-pointer select-none ${
             depth === 0
               ? "bg-creme/60 hover:bg-creme font-semibold"
-              : "hover:bg-creme/30"
+              : "bg-creme/30 hover:bg-creme/50"
           }`}
           onClick={() => toggleCollapse(aisle.id)}
         >
@@ -650,6 +736,155 @@ export default function IngredientsPage() {
         onConfirm={handleDelete}
         onCancel={() => { setDeleteConfirmOpen(false); setDeletingIngredient(null) }}
       />
+
+      {/* Conversions Panel */}
+      <SidePanel
+        open={convPanelOpen}
+        onClose={() => setConvPanelOpen(false)}
+        title={convIngredient ? `Conversions — ${convIngredient.name}` : "Conversions"}
+        subtitle="Équivalences entre unités"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setConvPanelOpen(false)}
+              disabled={savingConv}
+              className="px-4 py-2 text-sm text-brun-light hover:text-brun transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={saveConversions}
+              disabled={savingConv}
+              className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm disabled:opacity-50"
+            >
+              {savingConv ? "Enregistrement..." : "Enregistrer"}
+            </button>
+          </>
+        }
+        width="md"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-brun-light">
+            Définissez les équivalences entre les unités liées à cet
+            ingrédient. Ex : 1 c.c. = 5 g.
+          </p>
+
+          {convRows.length === 0 && (
+            <p className="text-xs text-brun-light italic py-4 text-center">
+              Aucune conversion définie.
+            </p>
+          )}
+
+          {convRows.map((row, idx) => {
+            const ingUnits =
+              convIngredient?.ingredient_units
+                ?.map((iu) => iu.unit)
+                .filter(Boolean) ?? []
+            return (
+              <div
+                key={idx}
+                className="flex items-center gap-2 bg-creme rounded-lg p-3"
+              >
+                <span className="text-xs text-brun-light flex-shrink-0">
+                  1
+                </span>
+                <select
+                  value={row.source_unit_id}
+                  onChange={(e) =>
+                    setConvRows((prev) =>
+                      prev.map((r, i) =>
+                        i === idx
+                          ? { ...r, source_unit_id: e.target.value }
+                          : r
+                      )
+                    )
+                  }
+                  className={INPUT_CLASS + " flex-1"}
+                >
+                  <option value="">Source</option>
+                  {ingUnits.map((u) => (
+                    <option key={u!.id} value={u!.id}>
+                      {u!.name} ({u!.abbreviation})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-brun-light flex-shrink-0">
+                  =
+                </span>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={row.conversion_factor}
+                  onChange={(e) =>
+                    setConvRows((prev) =>
+                      prev.map((r, i) =>
+                        i === idx
+                          ? {
+                              ...r,
+                              conversion_factor:
+                                parseFloat(e.target.value) || 0,
+                            }
+                          : r
+                      )
+                    )
+                  }
+                  className={INPUT_CLASS + " w-20"}
+                />
+                <select
+                  value={row.target_unit_id}
+                  onChange={(e) =>
+                    setConvRows((prev) =>
+                      prev.map((r, i) =>
+                        i === idx
+                          ? { ...r, target_unit_id: e.target.value }
+                          : r
+                      )
+                    )
+                  }
+                  className={INPUT_CLASS + " flex-1"}
+                >
+                  <option value="">Cible</option>
+                  {ingUnits.map((u) => (
+                    <option key={u!.id} value={u!.id}>
+                      {u!.name} ({u!.abbreviation})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => removeConvRow(idx)}
+                  className="text-brun-light hover:text-rose transition-colors p-1 flex-shrink-0"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.75}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            )
+          })}
+
+          <button
+            type="button"
+            onClick={addConvRow}
+            className="text-xs text-orange hover:text-orange-light font-medium transition-colors"
+          >
+            + Ajouter une conversion
+          </button>
+        </div>
+      </SidePanel>
     </div>
   )
 }
