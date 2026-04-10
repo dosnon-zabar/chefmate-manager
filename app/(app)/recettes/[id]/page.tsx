@@ -818,7 +818,7 @@ function StepSection({
               </div>
               <input
                 type="text"
-                value={step.title}
+                value={step.title ?? ""}
                 onChange={(e) => updateStep(idx, "title", e.target.value)}
                 placeholder="Titre de l'étape (optionnel)"
                 className={INPUT_CLASS + " mb-2 text-sm font-medium"}
