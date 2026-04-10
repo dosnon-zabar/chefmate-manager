@@ -52,7 +52,7 @@ export default function RolesPage() {
               description="Accès total à la plateforme. Gère les utilisateurs, les équipes, les sites, les contenus, les référentiels et l'administration."
               abilities={[
                 "Gérer toutes les recettes et événements (CRU, publication, réattribution, soft delete)",
-                "Gérer tous les ingrédients et référentiels (unités, rayons, types de recette, tags, saisons)",
+                "Gérer tous les ingrédients et référentiels (unités, rayons, tags, saisons)",
                 "Gérer les utilisateurs : création, attribution aux équipes, définition des rôles, changement de statut",
                 "Gérer les équipes : création, modification, changement de statut, soft delete",
                 "Gérer les sites : création, modification, soft delete",
@@ -68,7 +68,7 @@ export default function RolesPage() {
               description="Gère les éléments structurels liés au contenu, partagés entre toutes les équipes."
               abilities={[
                 "CRUD sur les ingrédients",
-                "CRUD sur les référentiels : unités, rayons, types de recette, tags",
+                "CRUD sur les référentiels : unités, rayons, tags",
                 "Lecture seule sur les saisons",
               ]}
               restrictions={[
@@ -161,7 +161,7 @@ export default function RolesPage() {
             rows={[
               ["Ingrédients", "CRUD", "CRUD", "R"],
               [
-                "Unités, Rayons, Types, Tags",
+                "Unités, Rayons, Tags",
                 "CRUD",
                 "CRUD",
                 "R",

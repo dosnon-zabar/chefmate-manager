@@ -111,6 +111,51 @@ export default function RGPDPage() {
             "L'accès au journal est limité à l'Admin global.",
           ]}
         />
+        {/* Procedure 5: Deduplicate ingredients */}
+        <ProcedureCard
+          number={5}
+          title="Dédoublonnage des ingrédients"
+          status="todo"
+          description="Identifier et fusionner les ingrédients en doublon dans le catalogue (ex: 'Tomate' et 'Tomates', 'Crème fraîche' et 'Crème fraiche')."
+          steps={[
+            "Lister les doublons potentiels : requête sur les noms proches (distance de Levenshtein, ou similarité trigram pg_trgm).",
+            "Afficher les paires candidates avec pour chaque doublon : nom, nombre de recettes liées, rayons, unité par défaut.",
+            "L'admin choisit l'ingrédient à conserver (le 'maître') et celui à fusionner (le 'doublon').",
+            "Transférer toutes les liaisons du doublon vers le maître : UPDATE recipe_ingredients SET ingredient_id = maître WHERE ingredient_id = doublon.",
+            "Transférer les ingredient_aisles et ingredient_units manquants (éviter les doublons de junction).",
+            "Soft-delete l'ingrédient doublon (lifecycle_status = 'deleted').",
+            "Journaliser la fusion dans l'audit log.",
+          ]}
+          considerations={[
+            "Ne pas supprimer physiquement le doublon : le garder en deleted pour traçabilité.",
+            "Vérifier les conversions d'unités (ingredient_conversions) : fusionner ou supprimer celles du doublon.",
+            "La détection automatique peut proposer des faux positifs — toujours exiger une validation humaine.",
+            "Envisager un mode 'dry run' qui montre l'impact avant d'exécuter.",
+            "L'extension pg_trgm doit être activée sur Supabase pour la recherche de similarité.",
+          ]}
+        />
+
+        {/* Procedure 6: Deduplicate tags */}
+        <ProcedureCard
+          number={6}
+          title="Dédoublonnage des tags"
+          status="todo"
+          description="Identifier et fusionner les tags en doublon (ex: 'végétarien' et 'Végétarien', 'sans gluten' et 'Sans Gluten')."
+          steps={[
+            "Lister les doublons potentiels : grouper par lower(name) et identifier les groupes avec plus d'un tag.",
+            "Afficher les paires avec pour chaque tag : nom, couleur, nombre de recettes liées.",
+            "L'admin choisit le tag à conserver et celui à fusionner.",
+            "Transférer les liaisons : UPDATE recipe_tags SET tag_id = maître WHERE tag_id = doublon (en ignorant les conflits de clé unique si la recette a déjà le tag maître).",
+            "Supprimer le tag doublon (hard delete — les tags n'ont pas de lifecycle_status).",
+            "Journaliser la fusion.",
+          ]}
+          considerations={[
+            "La comparaison case-insensitive (lower(name)) détecte les doublons les plus évidents.",
+            "Pour les variantes orthographiques (accents, tirets), envisager unaccent + trim.",
+            "Contrairement aux ingrédients, les tags sont hard-deleted car pas de lifecycle_status. Prévoir un soft-delete sur les tags si on veut garder une trace.",
+            "Le transfert de recipe_tags peut créer des doublons de junction — utiliser INSERT ON CONFLICT DO NOTHING.",
+          ]}
+        />
       </div>
     </div>
   )
