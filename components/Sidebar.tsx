@@ -131,12 +131,6 @@ const NAV: Section[] = [
             visible: canSeeIngredientsAndReferentials,
           },
           {
-            href: "/referentiels/types-recette",
-            label: "Types de recette",
-            icon: "M3 3h18v18H3z",
-            visible: canSeeIngredientsAndReferentials,
-          },
-          {
             href: "/referentiels/tags",
             label: "Tags",
             icon: "M3 3h18v18H3z",

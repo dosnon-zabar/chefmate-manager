@@ -61,7 +61,7 @@ export type Resource =
   | "event"
   | "ingredient"
   // Referentials (shared globally)
-  | "referential" // units, aisles, recipe_types, tags (Admin contenu scope)
+  | "referential" // units, aisles, tags (Admin contenu scope)
   | "season" // Admin global only
   // Team & user management
   | "team"
@@ -265,7 +265,7 @@ export function can(
       return hasGlobalRole(assignments, "Admin contenu")
     }
 
-    // ---------- Referentials (units, aisles, recipe_types, tags) ----------
+    // ---------- Referentials (units, aisles, tags) ----------
     case "referential": {
       if (action === "read") return true
       return hasGlobalRole(assignments, "Admin contenu")
