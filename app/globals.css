@@ -2,24 +2,24 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* Palette — repris de chefmate-site-vivante pour démarrer, à ajuster plus tard */
-  --color-orange: #E8792B;
-  --color-orange-light: #F4A261;
-  --color-jaune: #F2C94C;
-  --color-jaune-light: #FBE8A6;
+  /* Palette — Sauge & Terracotta (pastel, naturel, chaleureux) */
+  --color-orange: #D4764E;
+  --color-orange-light: #E8A07A;
+  --color-jaune: #E8C864;
+  --color-jaune-light: #F5E4A8;
   --color-peche: #E8B4A0;
-  --color-peche-light: #F3D5C8;
-  --color-rose: #E87FA0;
-  --color-vert-eau: #8EC8B0;
-  --color-vert-eau-light: #C3E5D7;
+  --color-peche-light: #F5DDD0;
+  --color-rose: #D46B6B;
+  --color-vert-eau: #8BB89A;
+  --color-vert-eau-light: #D8E8D4;
   --color-bleu-gris: #8B9DAF;
   --color-bleu-gris-light: #B8C5D3;
 
   /* Bases */
-  --color-creme: #F6F1EA;
-  --color-creme-dark: #EDE5D8;
-  --color-brun: #3D3229;
-  --color-brun-light: #6B5E52;
+  --color-creme: #F2F5F0;
+  --color-creme-dark: #E4E9E0;
+  --color-brun: #2D3B2D;
+  --color-brun-light: #6B7B6B;
 
   --font-serif: "Playfair Display", Georgia, serif;
   --font-sans: "DM Sans", "Inter", system-ui, sans-serif;
@@ -75,14 +75,14 @@ h1, h2, h3, h4 {
   font-weight: 500;
   line-height: 1rem;
   cursor: pointer;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%233D3229'><path fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z' clip-rule='evenodd'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%232D3B2D'><path fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z' clip-rule='evenodd'/></svg>");
   background-repeat: no-repeat;
   background-position: right 0.5rem center;
   background-size: 0.85rem 0.85rem;
 }
 .status-pill-select:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(232, 121, 43, 0.3);
+  box-shadow: 0 0 0 2px rgba(212, 118, 78, 0.3);
 }
 .status-pill-select:disabled {
   opacity: 0.6;
