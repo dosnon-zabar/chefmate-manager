@@ -1,15 +1,24 @@
-export default function ReferentielsUnitesPage() {
+"use client"
+
+import { useAuth } from "@/lib/auth/auth-context"
+import SortableReferentialPage from "@/components/SortableReferentialPage"
+
+export default function UnitesPage() {
+  const { hasRole } = useAuth()
+  const canWrite = hasRole("Admin global") || hasRole("Admin contenu")
+
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="font-serif text-3xl text-brun">Unités</h1>
-        <p className="text-sm text-brun-light mt-1">Gérez les unités de mesure</p>
-      </header>
-      <div className="bg-white rounded-2xl p-8 text-center">
-        <p className="text-brun-light text-sm">
-          Cette section sera disponible prochainement.
-        </p>
-      </div>
-    </div>
+    <SortableReferentialPage
+      title="Unités"
+      subtitle="Gérez les unités de mesure par glisser-déposer"
+      apiPath="units"
+      canWrite={canWrite}
+      labelKey="name"
+      secondaryKey="abbreviation"
+      fields={[
+        { key: "name", label: "Nom", type: "text", required: true },
+        { key: "abbreviation", label: "Abréviation", type: "text", required: true, placeholder: "g, kg, mL..." },
+      ]}
+    />
   )
 }
