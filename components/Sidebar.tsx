@@ -286,7 +286,7 @@ export default function Sidebar() {
 
       {/* Scrollable nav with fade-out gradient at the bottom */}
       <div className="flex-1 min-h-0 relative">
-        <nav className="h-full overflow-y-auto px-6 pb-8 sidebar-nav">
+        <nav className="h-full overflow-y-auto px-6 pb-8 sidebar-nav space-y-8">
           {NAV.map((section) => {
           if (!section.visible(a)) return null
           const visibleItems = section.items
