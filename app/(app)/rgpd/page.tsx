@@ -10,36 +10,6 @@ export default function RGPDPage() {
       </header>
 
       <div className="space-y-6">
-        {/* Performance alert */}
-        <div className="bg-rose/10 border border-rose/20 rounded-2xl p-6">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-rose/20 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-rose" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="font-serif text-lg text-brun mb-2">
-                Performance en production
-              </h2>
-              <p className="text-sm text-brun leading-relaxed mb-3">
-                <strong>L&apos;application est lente en production</strong> en
-                raison de l&apos;architecture double-hop serverless
-                (Manager Netlify → Admin Netlify → Supabase). Chaque
-                requête subit potentiellement deux cold starts de 1 à 3
-                secondes chacun.
-              </p>
-              <div className="text-xs text-brun-light space-y-1.5">
-                <p className="font-semibold text-brun">Actions recommandées (par priorité) :</p>
-                <p>1. <strong>Héberger le manager sur un VPS</strong> (~5€/mois Hetzner/Railway) — process Node permanent, zéro cold start côté manager.</p>
-                <p>2. <strong>Ajouter du cache</strong> sur les données stables (référentiels, rôles, teams) — réduit les appels API de 80%.</p>
-                <p>3. <strong>Batcher les appels N+1</strong> (page équipes : 1 appel au lieu de N pour les membres).</p>
-                <p>4. <strong>Passer Supabase en Pro</strong> ($25/mois) — DB dédiée, jamais en pause.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Intro */}
         <div className="bg-white rounded-2xl p-6">
           <p className="text-sm text-brun leading-relaxed">
