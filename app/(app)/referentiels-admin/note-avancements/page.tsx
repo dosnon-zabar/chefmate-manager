@@ -1,15 +1,22 @@
-export default function ReferentielsAdminNoteAvancementsPage() {
+"use client"
+
+import { useAuth } from "@/lib/auth/auth-context"
+import SortableReferentialPage from "@/components/SortableReferentialPage"
+
+export default function NoteAvancementsPage() {
+  const { hasRole } = useAuth()
+  const canWrite = hasRole("Admin global")
+
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="font-serif text-3xl text-brun">Avancements</h1>
-        <p className="text-sm text-brun-light mt-1">Définissez les statuts d'avancement</p>
-      </header>
-      <div className="bg-white rounded-2xl p-8 text-center">
-        <p className="text-brun-light text-sm">
-          Cette section sera disponible prochainement.
-        </p>
-      </div>
-    </div>
+    <SortableReferentialPage
+      title="Avancements"
+      subtitle="Définissez les statuts d'avancement des notes"
+      apiPath="note-progress-statuses"
+      canWrite={canWrite}
+      fields={[
+        { key: "name", label: "Nom", type: "text", required: true },
+        { key: "color", label: "Couleur", type: "color" },
+      ]}
+    />
   )
 }

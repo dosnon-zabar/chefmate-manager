@@ -1,15 +1,22 @@
-export default function ReferentielsAdminNoteTypesPage() {
+"use client"
+
+import { useAuth } from "@/lib/auth/auth-context"
+import SortableReferentialPage from "@/components/SortableReferentialPage"
+
+export default function NoteTypesPage() {
+  const { hasRole } = useAuth()
+  const canWrite = hasRole("Admin global")
+
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="font-serif text-3xl text-brun">Types de notes</h1>
-        <p className="text-sm text-brun-light mt-1">Gérez les types de notes d'évolution</p>
-      </header>
-      <div className="bg-white rounded-2xl p-8 text-center">
-        <p className="text-brun-light text-sm">
-          Cette section sera disponible prochainement.
-        </p>
-      </div>
-    </div>
+    <SortableReferentialPage
+      title="Types de notes"
+      subtitle="Gérez les types de notes d'évolution"
+      apiPath="note-types"
+      canWrite={canWrite}
+      fields={[
+        { key: "name", label: "Nom", type: "text", required: true },
+        { key: "color", label: "Couleur", type: "color" },
+      ]}
+    />
   )
 }

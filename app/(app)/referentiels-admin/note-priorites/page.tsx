@@ -1,15 +1,22 @@
-export default function ReferentielsAdminNotePrioritesPage() {
+"use client"
+
+import { useAuth } from "@/lib/auth/auth-context"
+import SortableReferentialPage from "@/components/SortableReferentialPage"
+
+export default function NotePrioritesPage() {
+  const { hasRole } = useAuth()
+  const canWrite = hasRole("Admin global")
+
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="font-serif text-3xl text-brun">Priorités</h1>
-        <p className="text-sm text-brun-light mt-1">Gérez les niveaux de priorité</p>
-      </header>
-      <div className="bg-white rounded-2xl p-8 text-center">
-        <p className="text-brun-light text-sm">
-          Cette section sera disponible prochainement.
-        </p>
-      </div>
-    </div>
+    <SortableReferentialPage
+      title="Priorités"
+      subtitle="Gérez les niveaux de priorité des notes"
+      apiPath="note-priorities"
+      canWrite={canWrite}
+      fields={[
+        { key: "name", label: "Nom", type: "text", required: true },
+        { key: "color", label: "Couleur", type: "color" },
+      ]}
+    />
   )
 }
