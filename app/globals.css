@@ -51,6 +51,15 @@ h1, h2, h3, h4 {
   animation: slide-in 0.25s ease-out;
 }
 
+/* Hide scrollbar on sidebar nav while keeping scroll functionality */
+.sidebar-nav {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.sidebar-nav::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
 /* Pill-shaped status select with a custom chevron.
    Using appearance:none lets us draw our own arrow via background-image
    so we can space it properly from the right edge — native arrows sit

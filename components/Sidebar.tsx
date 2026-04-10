@@ -272,8 +272,8 @@ export default function Sidebar() {
   const isGroup = (i: NavItem): i is GroupItem => "children" in i
 
   return (
-    <aside className="w-64 bg-brun min-h-screen p-6 flex-shrink-0 flex flex-col sticky top-0">
-      <div className="mb-8">
+    <aside className="w-64 bg-brun h-screen flex-shrink-0 flex flex-col sticky top-0">
+      <div className="px-6 pt-6 pb-2 mb-4">
         <img
           src="/chefmate-logo.svg"
           alt="ChefMate"
@@ -284,8 +284,10 @@ export default function Sidebar() {
         </span>
       </div>
 
-      <nav className="space-y-6 flex-1 overflow-y-auto">
-        {NAV.map((section) => {
+      {/* Scrollable nav with fade-out gradient at the bottom */}
+      <div className="flex-1 min-h-0 relative">
+        <nav className="h-full overflow-y-auto px-6 pb-8 sidebar-nav">
+          {NAV.map((section) => {
           if (!section.visible(a)) return null
           const visibleItems = section.items
             .map((item): NavItem | null => {
@@ -375,9 +377,13 @@ export default function Sidebar() {
             </div>
           )
         })}
-      </nav>
+          </nav>
+        {/* Fade gradient overlay */}
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-brun to-transparent" />
+      </div>
 
-      <div className="mt-auto border-t border-white/10 pt-4">
+      {/* Fixed footer */}
+      <div className="flex-shrink-0 border-t border-white/10 px-6 py-4">
         <div className="mb-3 px-2">
           <p className="text-white text-sm font-medium truncate">
             {user.first_name} {user.last_name}
