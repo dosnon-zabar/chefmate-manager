@@ -68,12 +68,17 @@ export default function SortableReferentialPage({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deletingItem, setDeletingItem] = useState<ReferentialItem | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const loadItems = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await fetch(`/api/${apiPath}`)
-      if (!res.ok) return
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
       const json = await res.json()
       // Ensure parent_id is null for flat items (so buildTreeFromFlat works)
       setItems(
@@ -83,8 +88,8 @@ export default function SortableReferentialPage({
           sort_order: typeof d.sort_order === "number" ? d.sort_order : 0,
         }))
       )
-    } catch {
-      // silent
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur")
     } finally {
       setLoading(false)
     }
@@ -309,6 +314,9 @@ export default function SortableReferentialPage({
       </div>
 
       {loading && <p className="text-sm text-brun-light italic">Chargement...</p>}
+      {error && (
+        <div className="bg-rose/10 text-rose text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+      )}
 
       {!loading && filteredItems.length === 0 && (
         <div className="text-center py-12 bg-white rounded-2xl">
