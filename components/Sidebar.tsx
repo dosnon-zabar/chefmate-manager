@@ -388,19 +388,34 @@ export default function Sidebar() {
         <div className="mb-3 flex justify-center">
           <ThemeSelector />
         </div>
-        <div className="mb-3 px-2">
-          <p className="text-white text-sm font-medium truncate">
-            {user.first_name} {user.last_name}
-          </p>
-          <p className="text-white/40 text-xs truncate">{user.email}</p>
+        <div className="flex items-center gap-2 px-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-white text-sm font-medium truncate">
+              {user.first_name} {user.last_name}
+            </p>
+            <p className="text-white/40 text-xs truncate">{user.email}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => logout()}
+            title="Se déconnecter"
+            className="flex-shrink-0 text-white/40 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/5"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.75}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
+            </svg>
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => logout()}
-          className="w-full text-left px-3 py-2 text-sm text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-        >
-          Se déconnecter
-        </button>
       </div>
     </aside>
   )
