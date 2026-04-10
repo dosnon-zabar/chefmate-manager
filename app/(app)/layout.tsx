@@ -3,6 +3,7 @@ import { readSession } from "@/lib/session"
 import { AuthProvider } from "@/lib/auth/auth-context"
 import Sidebar from "@/components/Sidebar"
 import { ToastProvider } from "@/components/Toaster"
+import { ThemeProvider } from "@/components/ThemeProvider"
 
 export default async function AppLayout({
   children,
@@ -16,12 +17,14 @@ export default async function AppLayout({
 
   return (
     <AuthProvider initialUser={session.user}>
-      <ToastProvider>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto p-8 bg-creme">{children}</main>
-        </div>
-      </ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="flex-1 overflow-y-auto p-8 bg-creme">{children}</main>
+          </div>
+        </ToastProvider>
+      </ThemeProvider>
     </AuthProvider>
   )
 }
