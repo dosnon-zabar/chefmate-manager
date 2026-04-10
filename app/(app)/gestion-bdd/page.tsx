@@ -8,6 +8,13 @@ interface DepInfo {
   current: string
 }
 
+interface OutdatedInfo {
+  name: string
+  current: string
+  latest: string
+  project: string
+}
+
 interface HealthData {
   admin?: {
     supabase_url?: string
@@ -32,6 +39,11 @@ export default function SanteTechniquePage() {
   const [health, setHealth] = useState<HealthData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Outdated deps check
+  const [outdated, setOutdated] = useState<OutdatedInfo[] | null>(null)
+  const [outdatedTotal, setOutdatedTotal] = useState<number>(0)
+  const [checkingOutdated, setCheckingOutdated] = useState(false)
 
   const loadHealth = useCallback(async () => {
     setLoading(true)
@@ -144,6 +156,96 @@ export default function SanteTechniquePage() {
                 isInternal
               />
             </div>
+          </Section>
+
+          {/* Mises à jour */}
+          <Section title="Mises à jour des dépendances">
+            {outdated === null ? (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setCheckingOutdated(true)
+                    try {
+                      const res = await fetch("/api/health/outdated")
+                      const json = await res.json()
+                      setOutdated(json.data?.outdated ?? [])
+                      setOutdatedTotal(json.data?.total_checked ?? 0)
+                    } catch {
+                      setOutdated([])
+                    } finally {
+                      setCheckingOutdated(false)
+                    }
+                  }}
+                  disabled={checkingOutdated}
+                  className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm disabled:opacity-50"
+                >
+                  {checkingOutdated
+                    ? "Vérification en cours..."
+                    : "Vérifier les mises à jour"}
+                </button>
+                <p className="text-xs text-brun-light">
+                  Compare les versions installées avec le registre npm.
+                </p>
+              </div>
+            ) : outdated.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-vert-eau">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Toutes les {outdatedTotal} dépendances sont à jour.
+              </div>
+            ) : (
+              <div>
+                <p className="text-xs text-brun-light mb-3">
+                  {outdated.length} mise{outdated.length > 1 ? "s" : ""} à
+                  jour disponible{outdated.length > 1 ? "s" : ""} sur{" "}
+                  {outdatedTotal} dépendances vérifiées.
+                </p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-[10px] font-semibold text-brun-light uppercase tracking-wide">
+                      <th className="text-left px-3 py-1">Package</th>
+                      <th className="text-left px-3 py-1">Projet</th>
+                      <th className="text-left px-3 py-1">Actuelle</th>
+                      <th className="text-left px-3 py-1">Disponible</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {outdated.map((dep, i) => (
+                      <tr
+                        key={dep.name}
+                        className={i % 2 === 0 ? "" : "bg-creme/30"}
+                      >
+                        <td className="px-3 py-1.5 text-brun font-mono text-xs">
+                          {dep.name}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-creme text-brun-light">
+                            {dep.project === "both"
+                              ? "admin + manager"
+                              : dep.project}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5 text-brun-light font-mono text-xs">
+                          {dep.current}
+                        </td>
+                        <td className="px-3 py-1.5 text-orange font-mono text-xs font-medium">
+                          {dep.latest}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button
+                  type="button"
+                  onClick={() => setOutdated(null)}
+                  className="mt-3 text-xs text-brun-light hover:text-brun transition-colors"
+                >
+                  Relancer la vérification
+                </button>
+              </div>
+            )}
           </Section>
 
           {/* Dépendances Admin */}

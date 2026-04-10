@@ -7,10 +7,13 @@ import { readFile } from "fs/promises"
  */
 export async function GET(request: Request) {
   try {
-    // Fetch admin health
+    // Fetch admin health — apiFetchServer unwraps the { data: ... }
+    // envelope, so we get { admin: { ... } } directly.
     let adminHealth: Record<string, unknown> = {}
     try {
-      adminHealth = (await apiFetchServer<Record<string, unknown>>("/health")) as Record<string, unknown>
+      const raw = (await apiFetchServer<Record<string, unknown>>("/health")) as Record<string, unknown>
+      // Extract the inner admin object if wrapped
+      adminHealth = (raw.admin as Record<string, unknown>) || raw
     } catch {
       adminHealth = { error: "Impossible de contacter l'admin" }
     }
