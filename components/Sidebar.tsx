@@ -385,14 +385,14 @@ export default function Sidebar() {
 
       {/* Fixed footer */}
       <div className="flex-shrink-0 border-t border-white/10 px-6 py-4">
-        <div className="mb-3 px-2 flex items-center justify-between">
-          <div className="min-w-0">
-            <p className="text-white text-sm font-medium truncate">
-              {user.first_name} {user.last_name}
-            </p>
-            <p className="text-white/40 text-xs truncate">{user.email}</p>
-          </div>
+        <div className="mb-3 flex justify-center">
           <ThemeSelector />
+        </div>
+        <div className="mb-3 px-2">
+          <p className="text-white text-sm font-medium truncate">
+            {user.first_name} {user.last_name}
+          </p>
+          <p className="text-white/40 text-xs truncate">{user.email}</p>
         </div>
         <button
           type="button"
