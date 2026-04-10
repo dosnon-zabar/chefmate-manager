@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 import { apiFetchServer, ApiError } from "@/lib/api"
 
-export async function GET(request: Request) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const url = new URL(request.url)
-    const qs = url.search
-    const data = await apiFetchServer<unknown>(`/teams${qs}`)
+    const { id } = await params
+    const data = await apiFetchServer<unknown>(`/teams/${id}/api-keys`)
     return NextResponse.json({ data })
   } catch (error) {
     const status = error instanceof ApiError ? error.status : 500
@@ -14,10 +16,14 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params
     const body = await request.json()
-    const data = await apiFetchServer<unknown>("/teams", {
+    const data = await apiFetchServer<unknown>(`/teams/${id}/api-keys`, {
       method: "POST",
       body,
     })

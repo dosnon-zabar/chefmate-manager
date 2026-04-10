@@ -17,6 +17,12 @@ interface Props {
    * to show a generic toast.
    */
   onSaved: (message?: string) => void
+  /**
+   * When provided (typically from the teams page "Ajouter un membre"),
+   * this team will be auto-checked in the team roles selection on
+   * creation, regardless of how many teams the caller manages.
+   */
+  preselectedTeamId?: string | null
 }
 
 /**
@@ -41,7 +47,7 @@ interface Props {
  *  - global_roles checkboxes are only shown if the caller is Admin global.
  *  - Other team roles on the target user are preserved untouched on save.
  */
-export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
+export default function UserFormPanel({ open, onClose, user, onSaved, preselectedTeamId }: Props) {
   const { user: caller, hasRole } = useAuth()
   const isCallerAdminGlobal = hasRole("Admin global")
 
@@ -106,12 +112,25 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
         setRoles(rolesJson.data || [])
         setTeams(teamsJson.data || [])
 
-        // ---- Creation mode: auto-select the single managed team ----
-        // If the caller is not Admin global and has exactly one managed
-        // team, preselect it so they don't need to tick it.
-        if (!user && callerManagedTeamIds !== "ALL" && callerManagedTeamIds.size === 1) {
-          const singleTeamId = Array.from(callerManagedTeamIds)[0]
-          setTeamRoleNames(new Map([[singleTeamId, new Set<string>()]]))
+        // ---- Creation mode: auto-select teams ----
+        if (!user) {
+          const initial = new Map<string, Set<string>>()
+          // If a specific team was requested (e.g. from the teams page
+          // "Ajouter un membre"), always pre-check it.
+          if (preselectedTeamId) {
+            initial.set(preselectedTeamId, new Set<string>())
+          }
+          // If the caller is not Admin global and has exactly one managed
+          // team, preselect it so they don't need to tick it.
+          if (
+            !preselectedTeamId &&
+            callerManagedTeamIds !== "ALL" &&
+            callerManagedTeamIds.size === 1
+          ) {
+            const singleTeamId = Array.from(callerManagedTeamIds)[0]
+            initial.set(singleTeamId, new Set<string>())
+          }
+          if (initial.size > 0) setTeamRoleNames(initial)
         }
       })
       .catch(() => setError("Impossible de charger les rôles et équipes"))
@@ -165,13 +184,21 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
     }
   }, [open, user, callerManagedTeamIds])
 
+  // When opened from the teams page with a preselectedTeamId, the panel
+  // is in "team context" mode: step 3 only shows roles for that one team,
+  // global roles and team selection checkboxes are hidden, and the team
+  // is locked (can't be unchecked).
+  const isTeamContext = !!preselectedTeamId && isCreation
+
   const globalRoles = useMemo(() => roles.filter((r) => r.scope === "global"), [roles])
   const teamScopedRoles = useMemo(() => roles.filter((r) => r.scope === "team"), [roles])
 
   const selectableTeams = useMemo(() => {
+    // In team context, only show the preselected team.
+    if (isTeamContext) return teams.filter((t) => t.id === preselectedTeamId)
     if (callerManagedTeamIds === "ALL") return teams
     return teams.filter((t) => callerManagedTeamIds.has(t.id))
-  }, [teams, callerManagedTeamIds])
+  }, [teams, callerManagedTeamIds, isTeamContext, preselectedTeamId])
 
   function toggleGlobalRole(name: string) {
     setGlobalRoleNames((prev) => {
@@ -373,7 +400,9 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
         if (existingUserId && existingUserStatus && existingUserStatus !== "active") {
           body.status = "active"
         }
-        if (isCallerAdminGlobal) {
+        // In team context we only manage roles on the preselected team —
+        // global_roles must NOT be sent or the backend would wipe them.
+        if (isCallerAdminGlobal && !isTeamContext) {
           body.global_roles = Array.from(globalRoleNames)
         }
         const res = await fetch("/api/users", {
@@ -786,7 +815,9 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
               </div>
             )}
 
-            {isCallerAdminGlobal && globalRoles.length > 0 && (
+            {/* Global roles — hidden in team context (we only manage
+                roles for the specific team, not global ones). */}
+            {!isTeamContext && isCallerAdminGlobal && globalRoles.length > 0 && (
               <div className={!isCreation ? "border-t border-brun/10 pt-5" : ""}>
                 <h3 className="font-semibold text-brun mb-1">Rôles globaux</h3>
                 <p className="text-xs text-brun-light mb-3">
@@ -814,16 +845,22 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
             )}
 
             {(() => {
-              // Label simplified when the caller only manages a single team:
-              // "Rôles par équipe" becomes just "Rôles", and the sub-text
-              // doesn't mention team selection since there's nothing to pick.
-              const hasMultipleTeams = selectableTeams.length > 1
-              const sectionTitle = hasMultipleTeams ? "Rôles par équipe" : "Rôles"
-              const sectionHelp = hasMultipleTeams
-                ? "Sélectionnez l'équipe puis les rôles à attribuer dessus."
-                : "Sélectionner les rôles pour cet utilisateur."
+              // In team context: no team selection (it's locked), just
+              // the role checkboxes for the preselected team.
+              // Otherwise: label adapts when the caller manages ≤1 team.
+              const hasMultipleTeams = !isTeamContext && selectableTeams.length > 1
+              const sectionTitle = isTeamContext
+                ? `Rôles sur ${selectableTeams[0]?.name ?? "l'équipe"}`
+                : hasMultipleTeams
+                  ? "Rôles par équipe"
+                  : "Rôles"
+              const sectionHelp = isTeamContext
+                ? "Sélectionner les rôles pour cet utilisateur sur cette équipe."
+                : hasMultipleTeams
+                  ? "Sélectionnez l'équipe puis les rôles à attribuer dessus."
+                  : "Sélectionner les rôles pour cet utilisateur."
               return (
-                <div className={isCallerAdminGlobal && globalRoles.length > 0 ? "border-t border-brun/10 pt-5" : ""}>
+                <div className={!isTeamContext && isCallerAdminGlobal && globalRoles.length > 0 ? "border-t border-brun/10 pt-5" : ""}>
                   <h3 className="font-semibold text-brun mb-1">{sectionTitle}</h3>
                   <p className="text-xs text-brun-light mb-3">{sectionHelp}</p>
 
@@ -833,24 +870,28 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
                     </p>
                   ) : (
                 <>
-                  <div className="space-y-2 mb-3">
-                    {selectableTeams.map((team) => {
-                      const isMember = teamRoleNames.has(team.id)
-                      return (
-                        <label
-                          key={team.id}
-                          className="flex items-center gap-2 text-sm cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isMember}
-                            onChange={() => toggleTeamMembership(team.id)}
-                          />
-                          <span className="font-medium">{team.name}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
+                  {/* Team selection checkboxes — hidden in team context
+                      (the team is locked to the preselected one). */}
+                  {!isTeamContext && (
+                    <div className="space-y-2 mb-3">
+                      {selectableTeams.map((team) => {
+                        const isMember = teamRoleNames.has(team.id)
+                        return (
+                          <label
+                            key={team.id}
+                            className="flex items-center gap-2 text-sm cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isMember}
+                              onChange={() => toggleTeamMembership(team.id)}
+                            />
+                            <span className="font-medium">{team.name}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
 
                   {Array.from(teamRoleNames.keys()).length > 0 && (
                     <div className="space-y-4 bg-creme rounded-lg p-3">
@@ -865,9 +906,14 @@ export default function UserFormPanel({ open, onClose, user, onSaved }: Props) {
                           if (!team) return null
                           return (
                             <div key={teamId}>
-                              <div className="text-xs font-semibold text-brun mb-2">
-                                {team.name}
-                              </div>
+                              {/* Team name heading — hidden in team context
+                                  since there's only one and it's in the
+                                  section title. */}
+                              {!isTeamContext && (
+                                <div className="text-xs font-semibold text-brun mb-2">
+                                  {team.name}
+                                </div>
+                              )}
                               <div className="grid grid-cols-2 gap-2">
                                 {teamScopedRoles.map((role) => (
                                   <label

@@ -53,6 +53,32 @@ export interface UserGroups {
   teamGroups: Array<{ teamId: string; teamName: string; roles: string[] }>
 }
 
+/**
+ * Fixed display order for role names. Roles not listed here are appended
+ * at the end in their original order. This avoids needing sort_order in
+ * every API response that embeds role names.
+ */
+export const ROLE_DISPLAY_ORDER: string[] = [
+  "Admin global",
+  "Admin contenu",
+  "Team manager",
+  "Website manager",
+  "Traiteur",
+  "Contributeur",
+]
+
+function sortRoleNames(roles: Iterable<string>): string[] {
+  return Array.from(new Set(roles)).sort((a, b) => {
+    const ia = ROLE_DISPLAY_ORDER.indexOf(a)
+    const ib = ROLE_DISPLAY_ORDER.indexOf(b)
+    // Unknown roles go to the end, sorted alphabetically among themselves.
+    const oa = ia === -1 ? ROLE_DISPLAY_ORDER.length : ia
+    const ob = ib === -1 ? ROLE_DISPLAY_ORDER.length : ib
+    if (oa !== ob) return oa - ob
+    return a.localeCompare(b)
+  })
+}
+
 export function groupRolesByTeam(user: UserWithRoles): UserGroups {
   const globalRoles: string[] = []
   const teamMap = new Map<string, { teamName: string; roles: Set<string> }>()
@@ -79,12 +105,12 @@ export function groupRolesByTeam(user: UserWithRoles): UserGroups {
   }
 
   return {
-    globalRoles: Array.from(new Set(globalRoles)).sort(),
+    globalRoles: sortRoleNames(globalRoles),
     teamGroups: Array.from(teamMap.entries())
       .map(([teamId, bucket]) => ({
         teamId,
         teamName: bucket.teamName,
-        roles: Array.from(bucket.roles).sort(),
+        roles: sortRoleNames(bucket.roles),
       }))
       .sort((a, b) => a.teamName.localeCompare(b.teamName)),
   }
