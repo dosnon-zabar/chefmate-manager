@@ -72,6 +72,8 @@ interface Recipe {
   status: string
   is_public: boolean
   images: ImageObj[]
+  portion_type_id: string | null
+  portion_type: { id: string; name: string } | null
   creator: { id: string; first_name: string; last_name: string } | null
   recipe_teams: Array<{ team: TeamRef | null }>
   recipe_seasons: Array<{ season: SeasonRef | null }>
@@ -160,6 +162,9 @@ export default function RecipeEditPage() {
   const [allUnits, setAllUnits] = useState<UnitRef[]>([])
   const [allAisles, setAllAisles] = useState<AisleRef[]>([])
 
+  // Portion types
+  const [allPortionTypes, setAllPortionTypes] = useState<Array<{ id: string; name: string }>>([])
+
   // Catalog ingredients for autocomplete
   const [catalogIngredients, setCatalogIngredients] = useState<MasterIngredient[]>([])
 
@@ -190,6 +195,7 @@ export default function RecipeEditPage() {
         fetch("/api/tags").then(r => r.json()).then(j => setAllTags(j.data ?? [])).catch(() => {}),
         fetch("/api/units").then(r => r.json()).then(j => setAllUnits(j.data ?? [])).catch(() => {}),
         fetch("/api/aisles").then(r => r.json()).then(j => setAllAisles(j.data ?? [])).catch(() => {}),
+        fetch("/api/portion-types").then(r => r.json()).then(j => setAllPortionTypes(j.data ?? [])).catch(() => {}),
         fetch("/api/ingredients").then(r => r.json()).then(j => setCatalogIngredients(
           (j.data ?? []).map((i: Record<string, unknown>) => ({
             id: i.id, name: i.name, name_en: i.name_en,
@@ -313,6 +319,7 @@ export default function RecipeEditPage() {
         recipe={recipe}
         allUnits={allUnits}
         allAisles={allAisles}
+        allPortionTypes={allPortionTypes}
         catalogIngredients={catalogIngredients}
         onPatch={patchRecipe}
         onRefresh={loadRecipe}
@@ -453,19 +460,6 @@ function InfoSection({
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-brun-light">Portions</label>
-          <input
-            type="number"
-            min={1}
-            value={recipe.serving_count}
-            onChange={async (e) => {
-              const v = parseInt(e.target.value) || 1
-              if (await onPatch({ serving_count: v })) void onRefresh()
-            }}
-            className="w-16 px-2 py-1 text-xs rounded border border-brun/10 bg-creme text-brun text-center"
-          />
-        </div>
 
         <label className="flex items-center gap-1.5 text-xs cursor-pointer">
           <input
@@ -672,6 +666,7 @@ function IngredientSection({
   recipe,
   allUnits,
   allAisles,
+  allPortionTypes,
   catalogIngredients,
   onPatch,
   onRefresh,
@@ -679,6 +674,7 @@ function IngredientSection({
   recipe: Recipe
   allUnits: UnitRef[]
   allAisles: AisleRef[]
+  allPortionTypes: Array<{ id: string; name: string }>
   catalogIngredients: MasterIngredient[]
   onPatch: (body: Record<string, unknown>) => Promise<boolean>
   onRefresh: () => Promise<void>
@@ -834,7 +830,31 @@ function IngredientSection({
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-serif text-lg text-brun">Ingrédients</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="font-serif text-lg text-brun">Ingrédients pour</h2>
+          <input
+            type="number"
+            min={1}
+            value={recipe.serving_count}
+            onChange={async (e) => {
+              const v = parseInt(e.target.value) || 1
+              if (await onPatch({ serving_count: v })) void onRefresh()
+            }}
+            className="w-14 px-2 py-0.5 text-sm font-semibold rounded border border-brun/10 bg-creme text-brun text-center"
+          />
+          <select
+            value={recipe.portion_type_id || ""}
+            onChange={async (e) => {
+              if (await onPatch({ portion_type_id: e.target.value || null })) void onRefresh()
+            }}
+            className="px-2 py-0.5 text-sm rounded border border-brun/10 bg-creme text-brun"
+          >
+            <option value="">personnes</option>
+            {allPortionTypes.map((pt) => (
+              <option key={pt.id} value={pt.id}>{pt.name}</option>
+            ))}
+          </select>
+        </div>
         <div className="flex gap-2">
           <button
             type="button"
