@@ -968,10 +968,12 @@ function IngredientSection({
                 <input
                   type="number"
                   step="any"
+                  min="0"
                   value={ing.quantity ?? ""}
-                  onChange={(e) =>
-                    updateIngredient(idx, { quantity: e.target.value ? parseFloat(e.target.value) : null })
-                  }
+                  onChange={(e) => {
+                    const v = e.target.value ? parseFloat(e.target.value) : null
+                    updateIngredient(idx, { quantity: v !== null && v < 0 ? 0 : v })
+                  }}
                   placeholder="Qté"
                   className={INPUT_CLASS + " text-xs text-center"}
                 />
