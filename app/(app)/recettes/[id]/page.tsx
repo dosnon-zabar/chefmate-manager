@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
 import { SortableTree, buildTreeFromFlat } from "@/components/SortableTree"
 import ConfirmDialog from "@/components/ConfirmDialog"
+import RecipePdfModal from "@/components/RecipePdfModal"
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
   ssr: false,
@@ -30,6 +31,7 @@ interface MasterIngredient {
   default_unit_id: string | null
   default_aisle_id: string | null
   unit_ids: string[]
+  aisle_ids: string[]
 }
 
 interface RecipeIngredient {
@@ -42,8 +44,8 @@ interface RecipeIngredient {
   unit: UnitRef | null
   aisle: AisleRef | null
   master: MasterIngredient | null
-  /** Unit IDs available for this ingredient (from catalog) */
   _availableUnitIds?: string[]
+  _availableAisleIds?: string[]
 }
 
 interface RecipeStep {
@@ -81,6 +83,56 @@ interface Recipe {
 const INPUT_CLASS =
   "w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30"
 
+/**
+ * Format an ingredient for natural French display.
+ *
+ * Rules:
+ *  - Unit is "pcs" or piece-like → "{qty} {name}" (no unit shown)
+ *    e.g. "1 citron", "2 poireaux"
+ *  - Otherwise → "{qty} {unit} de/d' {name}"
+ *    e.g. "10 cl d'eau", "500 g de farine", "2 kg de poireaux"
+ *  - "d'" before vowels and h muet, "de" before consonants
+ *  - No quantity (null/0) → just the name
+ */
+function formatIngredientNatural(
+  name: string,
+  quantity: number | null,
+  unitAbbrev: string | null | undefined
+): string {
+  const n = name.toLowerCase()
+  const qty = quantity ?? 0
+
+  if (!qty && !unitAbbrev) return n
+  if (!qty) return n
+
+  const PIECE_UNITS = ["pcs", "pièce", "pièces", "piece", "u"]
+  const isPiece = !unitAbbrev || PIECE_UNITS.includes(unitAbbrev.toLowerCase())
+
+  // Units that get pluralized with "s" when qty >= 2
+  const PLURALIZABLE_UNITS = ["gousse", "tête", "tranche", "feuille", "botte", "branche", "brin"]
+
+  if (isPiece) {
+    // Add "s" to the name when qty >= 2
+    const displayName = qty >= 2 && !n.endsWith("s") && !n.endsWith("x") && !n.endsWith("z")
+      ? n + "s"
+      : n
+    return `${qty} ${displayName}`
+  }
+
+  // Check if unit should be pluralized
+  const unitLower = (unitAbbrev || "").toLowerCase()
+  let displayUnit = unitAbbrev || ""
+  if (qty >= 2 && PLURALIZABLE_UNITS.includes(unitLower)) {
+    displayUnit = displayUnit + "s"
+  }
+
+  // Determine de/d'
+  const startsWithVowel = /^[aeiouyàâäéèêëïîôùûüœæh]/i.test(n)
+  const liaison = startsWithVowel ? "d'" : "de "
+
+  return `${qty} ${displayUnit} ${liaison}${n}`
+}
+
 function getAdminBase() {
   if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
     return "https://chefmate-admin.zabar.fr"
@@ -110,6 +162,9 @@ export default function RecipeEditPage() {
 
   // Catalog ingredients for autocomplete
   const [catalogIngredients, setCatalogIngredients] = useState<MasterIngredient[]>([])
+
+  // PDF
+  const [pdfOpen, setPdfOpen] = useState(false)
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -141,6 +196,9 @@ export default function RecipeEditPage() {
             default_unit_id: i.default_unit_id, default_aisle_id: i.default_aisle_id,
             unit_ids: ((i.ingredient_units as Array<{ unit: { id: string } | null }>) ?? [])
               .map((iu) => iu.unit?.id)
+              .filter(Boolean) as string[],
+            aisle_ids: ((i.ingredient_aisles as Array<{ aisle: { id: string } | null }>) ?? [])
+              .map((ia) => ia.aisle?.id)
               .filter(Boolean) as string[],
           }))
         )).catch(() => {}),
@@ -210,16 +268,28 @@ export default function RecipeEditPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Back link */}
-      <button
-        onClick={() => router.push("/recettes")}
-        className="text-sm text-brun-light hover:text-brun transition-colors flex items-center gap-1"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-        Retour aux recettes
-      </button>
+      {/* Header with back link + PDF button */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => router.push("/recettes")}
+          className="text-sm text-brun-light hover:text-brun transition-colors flex items-center gap-1"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Retour aux recettes
+        </button>
+        <button
+          type="button"
+          onClick={() => setPdfOpen(true)}
+          className="px-3 py-1.5 text-xs font-medium text-brun-light border border-brun/10 rounded-lg hover:border-orange/40 hover:text-orange transition-colors flex items-center gap-1.5"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Télécharger PDF
+        </button>
+      </div>
 
       {/* Section 1: Infos générales */}
       <InfoSection
@@ -266,6 +336,13 @@ export default function RecipeEditPage() {
           Supprimer cette recette
         </button>
       </div>
+
+      {/* PDF Modal */}
+      <RecipePdfModal
+        open={pdfOpen}
+        onClose={() => setPdfOpen(false)}
+        recipe={recipe}
+      />
 
       <ConfirmDialog
         open={deleteOpen}
@@ -623,7 +700,11 @@ function IngredientSection({
           const cat = ing.ingredient_master_id
             ? catalogIngredients.find((c) => c.id === ing.ingredient_master_id)
             : null
-          return { ...ing, _availableUnitIds: cat?.unit_ids }
+          return {
+            ...ing,
+            _availableUnitIds: cat?.unit_ids,
+            _availableAisleIds: cat?.aisle_ids,
+          }
         })
     )
   }, [recipe, catalogIngredients])
@@ -653,12 +734,15 @@ function IngredientSection({
 
   function selectFromCatalog(idx: number, master: MasterIngredient) {
     const defaultUnit = allUnits.find((u) => u.id === master.default_unit_id) || null
+    const defaultAisle = allAisles.find((a) => a.id === master.default_aisle_id) || null
     updateIngredient(idx, {
       name: master.name,
       ingredient_master_id: master.id,
       master,
       unit: defaultUnit,
+      aisle: defaultAisle,
       _availableUnitIds: master.unit_ids,
+      _availableAisleIds: master.aisle_ids,
     })
     setAcOpen(null)
     setAcFilter("")
@@ -716,6 +800,30 @@ function IngredientSection({
     setSaving(false)
   }
 
+  // Comment toggle per row
+  const [commentOpenIdx, setCommentOpenIdx] = useState<Set<number>>(new Set())
+
+  // Auto-open comment rows that already have a comment
+  useEffect(() => {
+    const withComment = new Set<number>()
+    ingredients.forEach((ing, idx) => {
+      if (ing.comment) withComment.add(idx)
+    })
+    setCommentOpenIdx(withComment)
+  }, []) // only on mount
+
+  function toggleComment(idx: number) {
+    setCommentOpenIdx((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
+  // Preview
+  const [previewOpen, setPreviewOpen] = useState(false)
+
   // Filtered catalog for autocomplete
   const acResults = acFilter.length >= 2
     ? catalogIngredients
@@ -728,6 +836,17 @@ function IngredientSection({
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-serif text-lg text-brun">Ingrédients</h2>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            title="Aperçu de l'affichage"
+            className="px-2 py-1 text-xs text-brun-light hover:text-orange transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
           <button
             type="button"
             onClick={addIngredient}
@@ -755,13 +874,13 @@ function IngredientSection({
           {ingredients.map((ing, idx) => {
             const nameEn = ing.master?.name_en
             return (
+              <div key={ing.id}>
               <div
-                key={ing.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, idx)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, idx)}
-                className="grid grid-cols-[auto_24px_1fr_80px_100px_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
+                className="grid grid-cols-[auto_24px_1fr_80px_100px_120px_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
               >
                 {/* Drag handle */}
                 <svg className="w-3.5 h-3.5 text-brun-light/30 cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
@@ -852,19 +971,117 @@ function IngredientSection({
                   ))}
                 </select>
 
-                {/* Remove */}
-                <button
-                  type="button"
-                  onClick={() => removeIngredient(idx)}
-                  className="text-brun-light hover:text-rose transition-colors p-0.5 opacity-0 group-hover:opacity-100"
+                {/* Aisle (rayon) */}
+                <select
+                  value={ing.aisle?.id || ""}
+                  onChange={(e) => {
+                    const a = allAisles.find((a) => a.id === e.target.value) || null
+                    updateIngredient(idx, { aisle: a })
+                  }}
+                  className={INPUT_CLASS + " text-xs"}
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                  <option value="">Rayon</option>
+                  {(ing._availableAisleIds && ing._availableAisleIds.length > 0
+                    ? allAisles.filter((a) => ing._availableAisleIds!.includes(a.id))
+                    : allAisles
+                  ).map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+
+                {/* Actions: comment toggle + remove */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleComment(idx)}
+                    title="Commentaire"
+                    className={`transition-colors p-0.5 ${
+                      ing.comment || commentOpenIdx.has(idx)
+                        ? "text-orange"
+                        : "text-brun-light/30 hover:text-orange opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeIngredient(idx)}
+                    className="text-brun-light hover:text-rose transition-colors p-0.5 opacity-0 group-hover:opacity-100"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Comment row */}
+              {commentOpenIdx.has(idx) && (
+                <div className="ml-12 mb-1">
+                  <input
+                    type="text"
+                    value={ing.comment ?? ""}
+                    onChange={(e) => updateIngredient(idx, { comment: e.target.value || null })}
+                    placeholder="Commentaire (ex: coupé en dés, à température ambiante...)"
+                    className={INPUT_CLASS + " text-xs text-brun-light italic"}
+                  />
+                </div>
+              )}
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Preview overlay */}
+      {previewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-brun/40 backdrop-blur-sm"
+            onClick={() => setPreviewOpen(false)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6 animate-slide-in">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif text-lg text-brun">
+                Aperçu des ingrédients
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(false)}
+                className="text-brun-light hover:text-brun"
+              >
+                ✕
+              </button>
+            </div>
+            <ul className="space-y-1.5">
+              {ingredients
+                .filter((i) => i.name.trim())
+                .map((ing, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm text-brun">
+                    <span className="text-brun-light mt-0.5">•</span>
+                    <span>
+                      {formatIngredientNatural(
+                        ing.name,
+                        ing.quantity,
+                        ing.unit?.abbreviation
+                      )}
+                      {ing.comment && (
+                        <span className="text-brun-light italic ml-1">
+                          ({ing.comment})
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+            {ingredients.filter((i) => i.name.trim()).length === 0 && (
+              <p className="text-xs text-brun-light italic text-center py-4">
+                Aucun ingrédient
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>
