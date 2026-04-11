@@ -900,7 +900,7 @@ function IngredientSection({
                 onDragStart={(e) => handleDragStart(e, idx)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, idx)}
-                className="grid grid-cols-[auto_24px_2fr_80px_100px_3fr_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
+                className="grid grid-cols-[auto_24px_3fr_80px_100px_2fr_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
               >
                 {/* Drag handle */}
                 <svg className="w-3.5 h-3.5 text-brun-light cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
