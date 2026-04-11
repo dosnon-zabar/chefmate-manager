@@ -20,6 +20,7 @@ interface Step {
 interface RecipeForPdf {
   name: string
   serving_count: number
+  portion_type?: { id: string; name: string } | null
   ingredients: Ingredient[]
   recipe_steps: Step[]
 }
@@ -102,6 +103,7 @@ export default function RecipePdfModal({ open, onClose, recipe }: Props) {
 
   if (!open) return null
 
+  const portionLabel = recipe.portion_type?.name || "personnes"
   const multiplier = portions / (recipe.serving_count || 1)
 
   const scaledIngredients = recipe.ingredients.map((ing) => ({
@@ -149,11 +151,11 @@ export default function RecipePdfModal({ open, onClose, recipe }: Props) {
     doc.setFontSize(11)
     doc.setTextColor(120, 120, 120)
     doc.setFont("helvetica", "normal")
-    doc.text(`Pour ${portions} ${portions > 1 ? "personnes" : "personne"}`, margin, y)
+    doc.text(`Pour ${portions} ${portionLabel}`, margin, y)
     if (multiplier !== 1) {
       doc.text(
-        `(adapté depuis ${recipe.serving_count} ${recipe.serving_count > 1 ? "personnes" : "personne"})`,
-        margin + 50,
+        `(adapté depuis ${recipe.serving_count} ${portionLabel})`,
+        margin + 40,
         y
       )
     }
@@ -275,7 +277,7 @@ export default function RecipePdfModal({ open, onClose, recipe }: Props) {
         {/* Portions adjuster */}
         <div className="bg-creme rounded-lg p-4 mb-4">
           <label className="block text-sm font-medium text-brun mb-2">
-            Adapter les quantités pour
+            Recette pour {recipe.serving_count} {portionLabel} — adapter pour
           </label>
           <div className="flex items-center gap-3">
             <button
@@ -302,7 +304,7 @@ export default function RecipePdfModal({ open, onClose, recipe }: Props) {
               +
             </button>
             <span className="text-sm text-brun-light">
-              {portions > 1 ? "personnes" : "personne"}
+              {portionLabel}
             </span>
             {multiplier !== 1 && (
               <span className="text-xs text-orange ml-auto">
