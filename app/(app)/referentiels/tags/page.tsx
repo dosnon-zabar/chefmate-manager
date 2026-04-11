@@ -15,7 +15,6 @@ export default function TagsPage() {
       canWrite={canWrite}
       fields={[
         { key: "name", label: "Nom", type: "text", required: true },
-        { key: "color", label: "Couleur", type: "color" },
       ]}
     />
   )

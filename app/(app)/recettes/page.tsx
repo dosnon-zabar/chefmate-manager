@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 
@@ -15,12 +15,12 @@ interface Recipe {
   slug: string
   serving_count: number
   status: string
-  is_public: boolean
+  is_private: boolean
   images: string[]
   creator: { id: string; first_name: string; last_name: string } | null
   recipe_teams: Array<{ team: TeamRef | null }>
   recipe_seasons: Array<{ season: { id: string; name: string; icon: string } | null }>
-  recipe_tags: Array<{ tag: { id: string; name: string; color: string } | null }>
+  recipe_tags: Array<{ tag: { id: string; name: string } | null }>
   ingredients: Array<{ id: string; name: string }>
   created_at: string
   updated_at: string
@@ -28,9 +28,6 @@ interface Recipe {
 
 /**
  * Extract image URL from the recipe images array.
- * Images are stored as objects { id, nom, url, ... } where url is
- * relative to the admin (/api/images/recipes/xxx.jpg). We construct
- * the full URL using the admin domain.
  */
 function getRecipeImageUrl(images: unknown): string | null {
   if (!Array.isArray(images) || images.length === 0) return null
@@ -38,7 +35,6 @@ function getRecipeImageUrl(images: unknown): string | null {
   if (typeof img === "string") return img
   if (img && typeof img === "object" && "url" in img) {
     const url = (img as { url: string }).url
-    // In prod, use the admin domain; in dev, localhost:3000
     const adminBase =
       typeof window !== "undefined" && window.location.hostname !== "localhost"
         ? "https://chefmate-admin.zabar.fr"
@@ -54,6 +50,8 @@ const STATUS_LABELS: Record<string, { label: string; bg: string; text: string }>
   publiee: { label: "Publiée", bg: "bg-vert-eau/20", text: "text-brun" },
 }
 
+const PAGE_SIZE = 24
+
 export default function RecettesPage() {
   const router = useRouter()
   const { hasRole } = useAuth()
@@ -62,6 +60,8 @@ export default function RecettesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [teams, setTeams] = useState<TeamRef[]>([])
   const [loading, setLoading] = useState(true)
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(0) // 0-indexed
 
   // Filters
   const [searchName, setSearchName] = useState("")
@@ -69,61 +69,55 @@ export default function RecettesPage() {
   const [filterStatus, setFilterStatus] = useState("")
   const [filterTeam, setFilterTeam] = useState("")
 
-  const loadData = useCallback(async () => {
+  // Reset to page 0 when any filter changes
+  const resetPage = useCallback(() => setPage(0), [])
+
+  const loadRecipes = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (searchName.trim()) params.set("name", searchName.trim())
-      params.set("limit", "500")
-      const qs = params.toString()
+      if (searchIngredient.trim()) params.set("ingredient", searchIngredient.trim())
+      if (filterStatus) params.set("status", filterStatus)
+      if (filterTeam) params.set("team_id", filterTeam)
+      params.set("limit", String(PAGE_SIZE))
+      params.set("offset", String(page * PAGE_SIZE))
 
-      const [recipesRes, teamsRes] = await Promise.all([
-        fetch(`/api/recipes${qs ? `?${qs}` : ""}`),
-        fetch("/api/teams"),
-      ])
-      const [recipesJson, teamsJson] = await Promise.all([
-        recipesRes.json(),
-        teamsRes.json(),
-      ])
-      setRecipes(recipesJson.data ?? [])
-      setTeams(teamsJson.data ?? [])
+      const qs = params.toString()
+      const res = await fetch(`/api/recipes?${qs}`)
+      const json = await res.json()
+
+      setRecipes(json.data ?? [])
+      setTotal(json.meta?.total ?? json.data?.length ?? 0)
     } catch {
       // silent
     } finally {
       setLoading(false)
     }
-  }, [searchName])
+  }, [searchName, searchIngredient, filterStatus, filterTeam, page])
 
+  const loadTeams = useCallback(async () => {
+    try {
+      const res = await fetch("/api/teams?status=active")
+      const json = await res.json()
+      setTeams(json.data ?? [])
+    } catch {
+      // silent
+    }
+  }, [])
+
+  // Debounced load on filter/page change
   useEffect(() => {
-    const t = setTimeout(() => void loadData(), 300)
+    const t = setTimeout(() => void loadRecipes(), 300)
     return () => clearTimeout(t)
-  }, [loadData])
+  }, [loadRecipes])
 
-  // Client-side filters (ingredient, status, team)
-  const filteredRecipes = useMemo(() => {
-    let filtered = recipes
+  // Load teams once
+  useEffect(() => {
+    void loadTeams()
+  }, [loadTeams])
 
-    if (searchIngredient.trim()) {
-      const s = searchIngredient.trim().toLowerCase()
-      filtered = filtered.filter((r) =>
-        r.ingredients?.some((ing) =>
-          ing.name.toLowerCase().includes(s)
-        )
-      )
-    }
-
-    if (filterStatus) {
-      filtered = filtered.filter((r) => r.status === filterStatus)
-    }
-
-    if (filterTeam) {
-      filtered = filtered.filter((r) =>
-        r.recipe_teams?.some((rt) => rt.team?.id === filterTeam)
-      )
-    }
-
-    return filtered
-  }, [recipes, searchIngredient, filterStatus, filterTeam])
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <div>
@@ -131,7 +125,7 @@ export default function RecettesPage() {
         <div>
           <h1 className="font-serif text-3xl text-brun">Recettes</h1>
           <p className="text-sm text-brun-light mt-1">
-            {filteredRecipes.length} recette{filteredRecipes.length !== 1 ? "s" : ""}
+            {total} recette{total !== 1 ? "s" : ""}
           </p>
         </div>
         <button
@@ -163,7 +157,7 @@ export default function RecettesPage() {
             <input
               type="search"
               value={searchName}
-              onChange={(e) => setSearchName(e.target.value)}
+              onChange={(e) => { setSearchName(e.target.value); resetPage() }}
               placeholder="Rechercher par nom..."
               className="w-full pl-9 pr-3 py-2 rounded-lg bg-white border border-brun/10 text-sm text-brun placeholder:text-brun-light/70 focus:outline-none focus:ring-2 focus:ring-orange/30"
             />
@@ -187,7 +181,7 @@ export default function RecettesPage() {
             <input
               type="search"
               value={searchIngredient}
-              onChange={(e) => setSearchIngredient(e.target.value)}
+              onChange={(e) => { setSearchIngredient(e.target.value); resetPage() }}
               placeholder="Rechercher par ingrédient..."
               className="w-full pl-9 pr-3 py-2 rounded-lg bg-white border border-brun/10 text-sm text-brun placeholder:text-brun-light/70 focus:outline-none focus:ring-2 focus:ring-orange/30"
             />
@@ -212,7 +206,7 @@ export default function RecettesPage() {
             </svg>
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => { setFilterStatus(e.target.value); resetPage() }}
               className="w-full pl-9 pr-8 py-2 rounded-lg bg-white border border-brun/10 text-sm text-brun appearance-none focus:outline-none focus:ring-2 focus:ring-orange/30 filter-select-chevron"
             >
               <option value="">Tous les statuts</option>
@@ -239,7 +233,7 @@ export default function RecettesPage() {
             </svg>
             <select
               value={filterTeam}
-              onChange={(e) => setFilterTeam(e.target.value)}
+              onChange={(e) => { setFilterTeam(e.target.value); resetPage() }}
               className="w-full pl-9 pr-8 py-2 rounded-lg bg-white border border-brun/10 text-sm text-brun appearance-none focus:outline-none focus:ring-2 focus:ring-orange/30 filter-select-chevron"
             >
               <option value="">Toutes les équipes</option>
@@ -260,7 +254,7 @@ export default function RecettesPage() {
       {/* Recipe cards grid */}
       {!loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredRecipes.map((recipe) => {
+          {recipes.map((recipe) => {
             const statusInfo = STATUS_LABELS[recipe.status] || STATUS_LABELS.brouillon
             const firstImage = getRecipeImageUrl(recipe.images)
 
@@ -304,10 +298,10 @@ export default function RecettesPage() {
                     {statusInfo.label}
                   </span>
 
-                  {/* Public badge */}
-                  {recipe.is_public && (
-                    <span className="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-medium rounded-full bg-orange/20 text-orange">
-                      Public
+                  {/* Private badge */}
+                  {recipe.is_private && (
+                    <span className="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-medium rounded-full bg-brun/10 text-brun-light">
+                      Privée
                     </span>
                   )}
                 </div>
@@ -346,11 +340,7 @@ export default function RecettesPage() {
                         rt.tag ? (
                           <span
                             key={rt.tag.id}
-                            className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                            style={{
-                              backgroundColor: rt.tag.color + "20",
-                              color: rt.tag.color,
-                            }}
+                            className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-brun/10 text-brun"
                           >
                             {rt.tag.name}
                           </span>
@@ -365,9 +355,67 @@ export default function RecettesPage() {
         </div>
       )}
 
-      {!loading && filteredRecipes.length === 0 && (
+      {!loading && recipes.length === 0 && (
         <div className="text-center py-12 bg-white rounded-2xl">
           <p className="text-brun-light">Aucune recette</p>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {!loading && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-8">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="px-3 py-1.5 text-sm rounded-lg border border-brun/10 bg-white text-brun hover:bg-creme disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            ← Précédent
+          </button>
+
+          {/* Page numbers */}
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i)
+              .filter((i) => {
+                // Show first, last, and pages around current
+                if (i === 0 || i === totalPages - 1) return true
+                if (Math.abs(i - page) <= 1) return true
+                return false
+              })
+              .reduce<(number | "ellipsis")[]>((acc, i, idx, arr) => {
+                if (idx > 0 && typeof arr[idx - 1] === "number" && i - (arr[idx - 1] as number) > 1) {
+                  acc.push("ellipsis")
+                }
+                acc.push(i)
+                return acc
+              }, [])
+              .map((item, idx) =>
+                item === "ellipsis" ? (
+                  <span key={`e-${idx}`} className="px-1 text-brun-light text-sm">
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={item}
+                    onClick={() => setPage(item)}
+                    className={`w-8 h-8 text-sm rounded-lg transition-colors ${
+                      item === page
+                        ? "bg-orange text-white font-semibold"
+                        : "bg-white border border-brun/10 text-brun hover:bg-creme"
+                    }`}
+                  >
+                    {item + 1}
+                  </button>
+                )
+              )}
+          </div>
+
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="px-3 py-1.5 text-sm rounded-lg border border-brun/10 bg-white text-brun hover:bg-creme disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            Suivant →
+          </button>
         </div>
       )}
     </div>

@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
 import { SortableTree, buildTreeFromFlat } from "@/components/SortableTree"
 import ConfirmDialog from "@/components/ConfirmDialog"
+import HelpBubble from "@/components/HelpBubble"
 import RecipePdfModal from "@/components/RecipePdfModal"
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
@@ -21,7 +22,7 @@ const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
 interface UnitRef { id: string; name: string; abbreviation: string }
 interface AisleRef { id: string; name: string; color: string }
 interface SeasonRef { id: string; name: string; icon: string }
-interface TagRef { id: string; name: string; color: string }
+interface TagRef { id: string; name: string }
 interface TeamRef { id: string; name: string }
 
 interface MasterIngredient {
@@ -70,7 +71,8 @@ interface Recipe {
   slug: string
   serving_count: number
   status: string
-  is_public: boolean
+  is_private: boolean
+  is_duplicable: boolean
   images: ImageObj[]
   portion_type_id: string | null
   portion_type: { id: string; name: string } | null
@@ -305,6 +307,7 @@ export default function RecipeEditPage() {
         allTags={allTags}
         onPatch={patchRecipe}
         onRefresh={loadRecipe}
+        onRefreshTags={() => fetch("/api/tags").then(r => r.json()).then(j => setAllTags(j.data ?? [])).catch(() => {})}
       />
 
       {/* Section 2: Images */}
@@ -376,6 +379,7 @@ function InfoSection({
   allTags,
   onPatch,
   onRefresh,
+  onRefreshTags,
 }: {
   recipe: Recipe
   allTeams: TeamRef[]
@@ -383,6 +387,7 @@ function InfoSection({
   allTags: TagRef[]
   onPatch: (body: Record<string, unknown>) => Promise<boolean>
   onRefresh: () => Promise<void>
+  onRefreshTags: () => void
 }) {
   const [name, setName] = useState(recipe.name)
   const { showToast } = useToast()
@@ -423,36 +428,217 @@ function InfoSection({
     if (await onPatch({ season_ids: Array.from(next) })) void onRefresh()
   }
 
-  async function toggleTag(tagId: string) {
+  // Tag autocomplete state
+  const [tagInput, setTagInput] = useState("")
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
+  const [creatingTag, setCreatingTag] = useState(false)
+  const tagBlurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const selectedTags = useMemo(
+    () => recipe.recipe_tags?.map((rt) => rt.tag).filter(Boolean) as TagRef[],
+    [recipe]
+  )
+
+  const filteredTagOptions = useMemo(() => {
+    if (!tagInput.trim()) return allTags.filter((t) => !tagIds.has(t.id))
+    const q = tagInput.trim().toLowerCase()
+    return allTags.filter((t) => !tagIds.has(t.id) && t.name.toLowerCase().includes(q))
+  }, [allTags, tagIds, tagInput])
+
+  const exactTagMatch = useMemo(
+    () => allTags.some((t) => t.name.toLowerCase() === tagInput.trim().toLowerCase()),
+    [allTags, tagInput]
+  )
+
+  async function addTag(tagId: string) {
     const next = new Set(tagIds)
-    if (next.has(tagId)) next.delete(tagId)
-    else next.add(tagId)
+    next.add(tagId)
+    if (await onPatch({ tag_ids: Array.from(next) })) void onRefresh()
+    setTagInput("")
+    setTagDropdownOpen(false)
+  }
+
+  async function removeTag(tagId: string) {
+    const next = new Set(tagIds)
+    next.delete(tagId)
     if (await onPatch({ tag_ids: Array.from(next) })) void onRefresh()
   }
 
-  return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
-      {/* Name */}
-      <input
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={saveName}
-        onKeyDown={(e) => e.key === "Enter" && saveName()}
-        className="font-serif text-2xl text-brun bg-transparent border-0 focus:outline-none focus:ring-0 w-full placeholder:text-brun-light/40"
-        placeholder="Nom de la recette"
-      />
+  async function createAndAddTag() {
+    const trimmed = tagInput.trim()
+    if (!trimmed || creatingTag) return
+    setCreatingTag(true)
+    try {
+      const res = await fetch("/api/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      const json = await res.json()
+      if (json.data?.id) {
+        await addTag(json.data.id)
+        onRefreshTags()
+        showToast(`Tag « ${trimmed} » créé`)
+      } else {
+        showToast("Erreur lors de la création du tag", "error")
+      }
+    } catch {
+      showToast("Erreur lors de la création du tag", "error")
+    } finally {
+      setCreatingTag(false)
+    }
+  }
 
-      {/* Status + portions + public */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-brun-light">Statut</label>
+  function handleTagKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      if (filteredTagOptions.length === 1) {
+        void addTag(filteredTagOptions[0].id)
+      } else if (tagInput.trim() && !exactTagMatch) {
+        void createAndAddTag()
+      }
+    }
+    if (e.key === "Escape") {
+      setTagDropdownOpen(false)
+      setTagInput("")
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Left 2/3 — Infos recette */}
+      <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm space-y-4">
+        {/* Name */}
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={saveName}
+          onKeyDown={(e) => e.key === "Enter" && saveName()}
+          className="font-serif text-2xl text-brun bg-transparent border-0 focus:outline-none focus:ring-0 w-full placeholder:text-brun-light/40"
+          placeholder="Nom de la recette"
+        />
+
+        {/* Seasons */}
+        {allSeasons.length > 0 && (
+          <div>
+            <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Saisons</h3>
+            <div className="flex flex-wrap gap-2">
+              {allSeasons.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => toggleSeason(s.id)}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer ${
+                    seasonIds.has(s.id)
+                      ? "bg-vert-eau/20 text-brun border-vert-eau"
+                      : "bg-white text-brun-light border-brun/10 hover:border-vert-eau/40"
+                  }`}
+                >
+                  {s.icon} {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tags — autocomplete + create */}
+        <div>
+          <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Tags</h3>
+
+          {/* Selected tags as pills */}
+          {selectedTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {selectedTags.map((t) => (
+                <span
+                  key={t.id}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full bg-brun/10 text-brun"
+                >
+                  {t.name}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(t.id)}
+                    className="hover:text-rose transition-colors"
+                    aria-label={`Retirer ${t.name}`}
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Input with dropdown */}
+          <div className="relative">
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => { setTagInput(e.target.value); setTagDropdownOpen(true) }}
+              onFocus={() => setTagDropdownOpen(true)}
+              onBlur={() => {
+                // Delay to allow click on dropdown items
+                if (tagBlurTimeout.current) clearTimeout(tagBlurTimeout.current)
+                tagBlurTimeout.current = setTimeout(() => setTagDropdownOpen(false), 200)
+              }}
+              onKeyDown={handleTagKeyDown}
+              placeholder="Ajouter un tag..."
+              className="w-full px-3 py-1.5 rounded-lg border border-brun/10 bg-creme text-sm text-brun placeholder:text-brun-light/50 focus:outline-none focus:ring-2 focus:ring-orange/30"
+            />
+
+            {tagDropdownOpen && (tagInput.trim() || filteredTagOptions.length > 0) && (
+              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-brun/10 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                {filteredTagOptions.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => addTag(t.id)}
+                    className="w-full text-left px-3 py-2 text-sm text-brun hover:bg-creme transition-colors"
+                  >
+                    {t.name}
+                  </button>
+                ))}
+
+                {/* Create option — shown when input doesn't match an existing tag */}
+                {tagInput.trim() && !exactTagMatch && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={createAndAddTag}
+                    disabled={creatingTag}
+                    className="w-full text-left px-3 py-2 text-sm text-orange hover:bg-orange/5 transition-colors border-t border-brun/5 flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    {creatingTag ? "Création..." : `Créer « ${tagInput.trim()} »`}
+                  </button>
+                )}
+
+                {filteredTagOptions.length === 0 && !(tagInput.trim() && !exactTagMatch) && (
+                  <p className="px-3 py-2 text-xs text-brun-light italic">Aucun tag trouvé</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Right 1/3 — Publication */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-5">
+        <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide">Publication</h3>
+
+        {/* Status */}
+        <div>
+          <label className="text-xs text-brun-light mb-1 block">Statut</label>
           <select
             value={recipe.status}
             onChange={async (e) => {
               if (await onPatch({ status: e.target.value })) void onRefresh()
             }}
-            className="filter-select text-xs"
+            className="w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-sm text-brun appearance-none focus:outline-none focus:ring-2 focus:ring-orange/30 filter-select-chevron"
           >
             <option value="brouillon">Brouillon</option>
             <option value="non_publiee">Non publiée</option>
@@ -460,101 +646,79 @@ function InfoSection({
           </select>
         </div>
 
-
-        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-          <input
-            type="checkbox"
-            checked={recipe.is_public}
-            onChange={async (e) => {
-              if (await onPatch({ is_public: e.target.checked })) void onRefresh()
-            }}
-          />
-          <span className="text-brun-light">Publique</span>
-        </label>
-      </div>
-
-      {/* Teams */}
-      {(allTeams.length > 0 || recipe.recipe_teams?.length > 0) && (
+        {/* Private toggle */}
         <div>
-          <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Équipes</h3>
-          <div className="flex flex-wrap gap-2">
-            {/* Active teams — toggleable */}
-            {allTeams.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => toggleTeam(t.id)}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer ${
-                  teamIds.has(t.id)
-                    ? "bg-orange text-white border-orange"
-                    : "bg-white text-brun border-brun/10 hover:border-orange/40"
-                }`}
-              >
-                {t.name}
-              </button>
-            ))}
-            {/* Inactive/deleted teams linked to the recipe — read-only */}
-            {recipe.recipe_teams
-              ?.filter((rt) => rt.team && !allTeams.some((at) => at.id === rt.team?.id))
-              .map((rt) => (
-                <span
-                  key={rt.team!.id}
-                  className="px-2.5 py-1 text-xs rounded-full border border-brun/10 bg-brun/5 text-brun-light italic"
-                  title="Équipe inactive ou inaccessible"
-                >
-                  {rt.team!.name}
-                </span>
-              ))}
-          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={recipe.is_private ?? false}
+              onChange={async (e) => {
+                const body: Record<string, unknown> = { is_private: e.target.checked }
+                // Force duplicable off when going private
+                if (e.target.checked && recipe.is_duplicable) body.is_duplicable = false
+                if (await onPatch(body)) void onRefresh()
+              }}
+              className="rounded border-brun/20 text-orange focus:ring-orange/30"
+            />
+            <span className="text-sm text-brun">Recette privée</span>
+            <HelpBubble text="Une recette privée n'apparaîtra sur aucun site et ne sera pas partagée à la communauté." />
+          </label>
         </div>
-      )}
 
-      {/* Seasons */}
-      {allSeasons.length > 0 && (
-        <div>
-          <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Saisons</h3>
-          <div className="flex flex-wrap gap-2">
-            {allSeasons.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => toggleSeason(s.id)}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer ${
-                  seasonIds.has(s.id)
-                    ? "bg-vert-eau/20 text-brun border-vert-eau"
-                    : "bg-white text-brun-light border-brun/10 hover:border-vert-eau/40"
-                }`}
-              >
-                {s.icon} {s.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tags */}
-      {allTags.length > 0 && (
-        <div>
-          <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Tags</h3>
-          <div className="flex flex-wrap gap-2">
-            {allTags.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => toggleTag(t.id)}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer`}
-                style={{
-                  backgroundColor: tagIds.has(t.id) ? t.color + "20" : "white",
-                  color: tagIds.has(t.id) ? t.color : undefined,
-                  borderColor: tagIds.has(t.id) ? t.color : undefined,
+        {/* Duplicable toggle — hidden when private */}
+        {!(recipe.is_private ?? false) && (
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={recipe.is_duplicable ?? false}
+                onChange={async (e) => {
+                  if (await onPatch({ is_duplicable: e.target.checked })) void onRefresh()
                 }}
-              >
-                {t.name}
-              </button>
-            ))}
+                className="rounded border-brun/20 text-orange focus:ring-orange/30"
+              />
+              <span className="text-sm text-brun">Duplicable</span>
+            </label>
+            <p className="text-[10px] text-brun-light mt-1">Permet à la communauté de dupliquer cette recette</p>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Teams */}
+        {(allTeams.length > 0 || recipe.recipe_teams?.length > 0) && (
+          <div>
+            <label className="text-xs text-brun-light mb-2 block">Équipes</label>
+            <div className="flex flex-wrap gap-2">
+              {/* Active teams — toggleable */}
+              {allTeams.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => toggleTeam(t.id)}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer ${
+                    teamIds.has(t.id)
+                      ? "bg-orange text-white border-orange"
+                      : "bg-white text-brun border-brun/10 hover:border-orange/40"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+              {/* Inactive/deleted teams linked to the recipe — read-only */}
+              {recipe.recipe_teams
+                ?.filter((rt) => rt.team && !allTeams.some((at) => at.id === rt.team?.id))
+                .map((rt) => (
+                  <span
+                    key={rt.team!.id}
+                    className="px-2.5 py-1 text-xs rounded-full border border-brun/10 bg-brun/5 text-brun-light italic"
+                    title="Équipe inactive ou inaccessible"
+                  >
+                    {rt.team!.name}
+                  </span>
+                ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -9,7 +9,7 @@
  *   import { can, ROLE_NAMES } from "@/lib/auth/permissions"
  *   const allowed = can(session.role_assignments, "update", "recipe", {
  *     ownerTeamIds: recipe.team_ids,
- *     isPublic: recipe.is_public,
+ *     isPrivate: recipe.is_private,
  *   })
  *
  * The `can` function is pure and synchronous: all the context it needs has to
@@ -242,7 +242,7 @@ export function can(
     // ---------- Event sub-resources (recipe / ingredient picking) ----------
     case "event_recipe_selection": {
       // A Traiteur on the host team can pick a recipe if:
-      //   - the recipe is is_public, OR
+      //   - the recipe is not private, OR
       //   - the recipe belongs to a team where the user is Contributeur, OR
       //   - the recipe belongs to the host team itself (and user is Traiteur there)
       if (!context.hostEventTeamId) return false
