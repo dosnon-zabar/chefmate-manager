@@ -142,6 +142,12 @@ const NAV: Section[] = [
             icon: "M3 3h18v18H3z",
             visible: canSeeSeasons,
           },
+          {
+            href: "/referentiels/portions",
+            label: "Types de portions",
+            icon: "M3 3h18v18H3z",
+            visible: canSeeIngredientsAndReferentials,
+          },
         ],
       },
     ],
