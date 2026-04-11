@@ -483,7 +483,7 @@ function InfoSection({
                 key={t.id}
                 type="button"
                 onClick={() => toggleTeam(t.id)}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer ${
                   teamIds.has(t.id)
                     ? "bg-orange text-white border-orange"
                     : "bg-white text-brun border-brun/10 hover:border-orange/40"
@@ -506,7 +506,7 @@ function InfoSection({
                 key={s.id}
                 type="button"
                 onClick={() => toggleSeason(s.id)}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer ${
                   seasonIds.has(s.id)
                     ? "bg-vert-eau/20 text-brun border-vert-eau"
                     : "bg-white text-brun-light border-brun/10 hover:border-vert-eau/40"
@@ -529,7 +529,7 @@ function InfoSection({
                 key={t.id}
                 type="button"
                 onClick={() => toggleTag(t.id)}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors`}
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer`}
                 style={{
                   backgroundColor: tagIds.has(t.id) ? t.color + "20" : "white",
                   color: tagIds.has(t.id) ? t.color : undefined,
