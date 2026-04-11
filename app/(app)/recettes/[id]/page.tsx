@@ -190,7 +190,7 @@ export default function RecipeEditPage() {
       setLoading(true)
       await Promise.all([
         loadRecipe(),
-        fetch("/api/teams").then(r => r.json()).then(j => setAllTeams(j.data ?? [])).catch(() => {}),
+        fetch("/api/teams?status=active").then(r => r.json()).then(j => setAllTeams(j.data ?? [])).catch(() => {}),
         fetch("/api/seasons").then(r => r.json()).then(j => setAllSeasons(j.data ?? [])).catch(() => {}),
         fetch("/api/tags").then(r => r.json()).then(j => setAllTags(j.data ?? [])).catch(() => {}),
         fetch("/api/units").then(r => r.json()).then(j => setAllUnits(j.data ?? [])).catch(() => {}),
