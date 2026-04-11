@@ -29,6 +29,7 @@ interface MasterIngredient {
   name_en: string | null
   default_unit_id: string | null
   default_aisle_id: string | null
+  unit_ids: string[]
 }
 
 interface RecipeIngredient {
@@ -41,6 +42,8 @@ interface RecipeIngredient {
   unit: UnitRef | null
   aisle: AisleRef | null
   master: MasterIngredient | null
+  /** Unit IDs available for this ingredient (from catalog) */
+  _availableUnitIds?: string[]
 }
 
 interface RecipeStep {
@@ -136,6 +139,9 @@ export default function RecipeEditPage() {
           (j.data ?? []).map((i: Record<string, unknown>) => ({
             id: i.id, name: i.name, name_en: i.name_en,
             default_unit_id: i.default_unit_id, default_aisle_id: i.default_aisle_id,
+            unit_ids: ((i.ingredient_units as Array<{ unit: { id: string } | null }>) ?? [])
+              .map((iu) => iu.unit?.id)
+              .filter(Boolean) as string[],
           }))
         )).catch(() => {}),
       ])
@@ -610,9 +616,17 @@ function IngredientSection({
 
   useEffect(() => {
     setIngredients(
-      [...(recipe.ingredients || [])].sort((a, b) => a.sort_order - b.sort_order)
+      [...(recipe.ingredients || [])]
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((ing) => {
+          // Look up available units from catalog if linked
+          const cat = ing.ingredient_master_id
+            ? catalogIngredients.find((c) => c.id === ing.ingredient_master_id)
+            : null
+          return { ...ing, _availableUnitIds: cat?.unit_ids }
+        })
     )
-  }, [recipe])
+  }, [recipe, catalogIngredients])
 
   function addIngredient() {
     setIngredients((prev) => [
@@ -644,6 +658,7 @@ function IngredientSection({
       ingredient_master_id: master.id,
       master,
       unit: defaultUnit,
+      _availableUnitIds: master.unit_ids,
     })
     setAcOpen(null)
     setAcFilter("")
@@ -671,18 +686,29 @@ function IngredientSection({
   }
 
   async function saveIngredients() {
+    // Validate before saving
+    const named = ingredients.filter((i) => i.name.trim())
+    for (const ing of named) {
+      if (ing.quantity === null || ing.quantity === undefined) {
+        showToast(`"${ing.name}" : la quantité est obligatoire`, "error")
+        return
+      }
+      if (!ing.unit?.id) {
+        showToast(`"${ing.name}" : l'unité est obligatoire`, "error")
+        return
+      }
+    }
+
     setSaving(true)
-    const payload = ingredients
-      .filter((i) => i.name.trim())
-      .map((i, idx) => ({
-        name: i.name.trim(),
-        quantity: i.quantity,
-        unit_id: i.unit?.id || null,
-        aisle_id: i.aisle?.id || null,
-        ingredient_master_id: i.ingredient_master_id || null,
-        comment: i.comment || null,
-        sort_order: idx,
-      }))
+    const payload = named.map((i, idx) => ({
+      name: i.name.trim(),
+      quantity: i.quantity,
+      unit_id: i.unit?.id || null,
+      aisle_id: i.aisle?.id || null,
+      ingredient_master_id: i.ingredient_master_id || null,
+      comment: i.comment || null,
+      sort_order: idx,
+    }))
     if (await onPatch({ ingredients: payload })) {
       showToast("Ingrédients enregistrés")
       void onRefresh()
@@ -735,7 +761,7 @@ function IngredientSection({
                 onDragStart={(e) => handleDragStart(e, idx)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, idx)}
-                className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
+                className="grid grid-cols-[auto_24px_1fr_80px_100px_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
               >
                 {/* Drag handle */}
                 <svg className="w-3.5 h-3.5 text-brun-light/30 cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
@@ -758,7 +784,7 @@ function IngredientSection({
                 )}
 
                 {/* Name with autocomplete */}
-                <div className="relative flex-1">
+                <div className="relative">
                   <input
                     type="text"
                     value={ing.name}
@@ -805,7 +831,7 @@ function IngredientSection({
                     updateIngredient(idx, { quantity: e.target.value ? parseFloat(e.target.value) : null })
                   }
                   placeholder="Qté"
-                  className={INPUT_CLASS + " w-20 text-xs text-center"}
+                  className={INPUT_CLASS + " text-xs text-center"}
                 />
 
                 {/* Unit */}
@@ -815,10 +841,13 @@ function IngredientSection({
                     const u = allUnits.find((u) => u.id === e.target.value) || null
                     updateIngredient(idx, { unit: u })
                   }}
-                  className={INPUT_CLASS + " w-24 text-xs"}
+                  className={INPUT_CLASS + " text-xs"}
                 >
                   <option value="">Unité</option>
-                  {allUnits.map((u) => (
+                  {(ing._availableUnitIds && ing._availableUnitIds.length > 0
+                    ? allUnits.filter((u) => ing._availableUnitIds!.includes(u.id))
+                    : allUnits
+                  ).map((u) => (
                     <option key={u.id} value={u.id}>{u.abbreviation}</option>
                   ))}
                 </select>
