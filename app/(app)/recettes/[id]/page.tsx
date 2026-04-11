@@ -474,10 +474,11 @@ function InfoSection({
       </div>
 
       {/* Teams */}
-      {allTeams.length > 0 && (
+      {(allTeams.length > 0 || recipe.recipe_teams?.length > 0) && (
         <div>
           <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Équipes</h3>
           <div className="flex flex-wrap gap-2">
+            {/* Active teams — toggleable */}
             {allTeams.map((t) => (
               <button
                 key={t.id}
@@ -492,6 +493,18 @@ function InfoSection({
                 {t.name}
               </button>
             ))}
+            {/* Inactive/deleted teams linked to the recipe — read-only */}
+            {recipe.recipe_teams
+              ?.filter((rt) => rt.team && !allTeams.some((at) => at.id === rt.team?.id))
+              .map((rt) => (
+                <span
+                  key={rt.team!.id}
+                  className="px-2.5 py-1 text-xs rounded-full border border-brun/10 bg-brun/5 text-brun-light italic"
+                  title="Équipe inactive ou inaccessible"
+                >
+                  {rt.team!.name}
+                </span>
+              ))}
           </div>
         </div>
       )}
