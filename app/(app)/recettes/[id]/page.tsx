@@ -903,7 +903,7 @@ function IngredientSection({
                 className="grid grid-cols-[auto_24px_1fr_80px_100px_120px_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
               >
                 {/* Drag handle */}
-                <svg className="w-3.5 h-3.5 text-brun-light/30 cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="w-3.5 h-3.5 text-brun-light cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                   <circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" />
                   <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
                   <circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
