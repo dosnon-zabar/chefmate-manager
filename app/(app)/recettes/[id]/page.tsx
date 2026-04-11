@@ -900,7 +900,7 @@ function IngredientSection({
                 onDragStart={(e) => handleDragStart(e, idx)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, idx)}
-                className="grid grid-cols-[auto_auto_1fr_80px_100px_120px_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
+                className="grid grid-cols-[auto_24px_1fr_80px_100px_120px_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
               >
                 {/* Drag handle */}
                 <svg className="w-3.5 h-3.5 text-brun-light/30 cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
@@ -909,8 +909,8 @@ function IngredientSection({
                   <circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
                 </svg>
 
-                {/* TheMealDB image — only render if name_en exists */}
-                {nameEn && (
+                {/* TheMealDB image or empty placeholder for alignment */}
+                {nameEn ? (
                   <img
                     src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(nameEn)}-Small.png`}
                     alt=""
@@ -921,6 +921,8 @@ function IngredientSection({
                       el.style.display = "none"
                     }}
                   />
+                ) : (
+                  <span className="w-6 h-6 flex-shrink-0" />
                 )}
 
                 {/* Name with autocomplete */}
