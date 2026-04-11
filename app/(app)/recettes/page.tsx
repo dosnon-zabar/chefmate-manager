@@ -74,7 +74,7 @@ export default function RecettesPage() {
     try {
       const params = new URLSearchParams()
       if (searchName.trim()) params.set("name", searchName.trim())
-      params.set("limit", "100")
+      params.set("limit", "500")
       const qs = params.toString()
 
       const [recipesRes, teamsRes] = await Promise.all([
