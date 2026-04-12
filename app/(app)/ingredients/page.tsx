@@ -36,6 +36,7 @@ interface Ingredient {
   name: string
   name_en: string | null
   description: string | null
+  image_url: string | null
   default_unit_id: string | null
   default_aisle_id: string | null
   lifecycle_status: string
@@ -73,6 +74,8 @@ export default function IngredientsPage() {
   const [formDefaultAisleId, setFormDefaultAisleId] = useState("")
   const [formAisleIds, setFormAisleIds] = useState<Set<string>>(new Set())
   const [formUnitIds, setFormUnitIds] = useState<Set<string>>(new Set())
+  const [formImageUrl, setFormImageUrl] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -196,6 +199,7 @@ export default function IngredientsPage() {
     setFormDefaultAisleId(preselectedAisleId || "")
     setFormAisleIds(preselectedAisleId ? new Set([preselectedAisleId]) : new Set())
     setFormUnitIds(new Set())
+    setFormImageUrl(null)
     setFormError(null)
     setPanelOpen(true)
   }
@@ -207,6 +211,7 @@ export default function IngredientsPage() {
     setFormDescription(ing.description || "")
     setFormDefaultUnitId(ing.default_unit_id || "")
     setFormDefaultAisleId(ing.default_aisle_id || "")
+    setFormImageUrl(ing.image_url || null)
     setFormAisleIds(
       new Set(
         ing.ingredient_aisles?.map((ia) => ia.aisle?.id).filter(Boolean) as string[]
@@ -234,6 +239,7 @@ export default function IngredientsPage() {
         name: formName.trim(),
         name_en: formNameEn.trim() || null,
         description: formDescription.trim() || null,
+        image_url: formImageUrl || null,
         default_unit_id: formDefaultUnitId || null,
         default_aisle_id: formDefaultAisleId || null,
         aisle_ids: Array.from(formAisleIds),
@@ -347,17 +353,26 @@ export default function IngredientsPage() {
         key={ing.id}
         className="flex items-center gap-3 py-1.5 px-3 rounded hover:bg-creme/50 group"
       >
-        {ing.name_en && (
-          <img
-            src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(ing.name_en)}-Small.png`}
-            alt=""
-            className="w-6 h-6 object-contain flex-shrink-0"
-            loading="lazy"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none"
-            }}
-          />
-        )}
+        {(() => {
+          const adminBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
+            ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+          const imgSrc = ing.image_url
+            ? (ing.image_url.startsWith("http") ? ing.image_url : `${adminBase}${ing.image_url}`)
+            : ing.name_en
+              ? `https://www.themealdb.com/images/ingredients/${encodeURIComponent(ing.name_en)}-Small.png`
+              : null
+          return imgSrc ? (
+            <img
+              src={imgSrc}
+              alt=""
+              className="w-6 h-6 object-contain flex-shrink-0 rounded"
+              loading="lazy"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+            />
+          ) : (
+            <span className="w-6 h-6 flex-shrink-0" />
+          )
+        })()}
         <span className="text-sm text-brun flex-1">{ing.name}</span>
         {ing.default_unit && (
           <span className="text-[10px] text-brun-light bg-creme px-1.5 py-0.5 rounded">
@@ -621,31 +636,106 @@ export default function IngredientsPage() {
             <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} className={INPUT_CLASS} autoFocus />
           </div>
 
+          {/* Image */}
+          <div>
+            <label className="block text-sm font-medium text-brun mb-2">Image</label>
+            {(() => {
+              const adminBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
+                ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+              const displayUrl = formImageUrl
+                ? (formImageUrl.startsWith("http") ? formImageUrl : `${adminBase}${formImageUrl}`)
+                : formNameEn
+                  ? `https://www.themealdb.com/images/ingredients/${encodeURIComponent(formNameEn.trim())}-Small.png`
+                  : null
+
+              return (
+                <div className="flex items-start gap-3">
+                  {/* Preview */}
+                  <div className="w-16 h-16 rounded-lg border border-brun/10 bg-white flex items-center justify-center overflow-hidden shrink-0">
+                    {displayUrl ? (
+                      <img
+                        src={displayUrl}
+                        alt=""
+                        className="w-full h-full object-contain p-1"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+                      />
+                    ) : (
+                      <svg className="w-6 h-6 text-brun-light/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    {/* Upload button */}
+                    <div className="flex items-center gap-2">
+                      <label className="px-3 py-1.5 text-xs bg-orange text-white rounded-lg hover:bg-orange-light transition-colors cursor-pointer">
+                        {uploading ? "Upload..." : "Uploader une image"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            setUploading(true)
+                            try {
+                              const formData = new FormData()
+                              formData.append("file", file)
+                              formData.append("prefix", "ingredients")
+                              const res = await fetch("/api/upload-image", { method: "POST", body: formData })
+                              const json = await res.json()
+                              const url = json.data?.url ?? json.url
+                              if (url) {
+                                setFormImageUrl(url)
+                                showToast("Image uploadée")
+                              }
+                            } catch {
+                              showToast("Erreur upload", "error")
+                            } finally {
+                              setUploading(false)
+                              e.target.value = ""
+                            }
+                          }}
+                        />
+                      </label>
+                      {formImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setFormImageUrl(null)}
+                          className="text-xs text-rose hover:text-rose/80 transition-colors"
+                        >
+                          Retirer
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Source info */}
+                    <p className="text-[10px] text-brun-light">
+                      {formImageUrl
+                        ? "Image uploadée"
+                        : formNameEn
+                          ? "Image TheMealDB (via nom anglais)"
+                          : "Aucune image"}
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-brun mb-1">
               Nom anglais
-              <span className="font-normal text-brun-light ml-1">(pour l&apos;image)</span>
+              <span className="font-normal text-brun-light ml-1">(fallback TheMealDB)</span>
             </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={formNameEn}
-                onChange={(e) => setFormNameEn(e.target.value)}
-                className={INPUT_CLASS}
-                placeholder="Tomato, Onion, Carrot..."
-              />
-              {formNameEn && (
-                <img
-                  src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(formNameEn.trim())}-Small.png`}
-                  alt=""
-                  className="w-10 h-10 object-contain flex-shrink-0 rounded border border-brun/10 bg-white p-0.5"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = ""
-                    ;(e.target as HTMLImageElement).style.display = "none"
-                  }}
-                />
-              )}
-            </div>
+            <input
+              type="text"
+              value={formNameEn}
+              onChange={(e) => setFormNameEn(e.target.value)}
+              className={INPUT_CLASS}
+              placeholder="Tomato, Onion, Carrot..."
+            />
           </div>
 
           <div>

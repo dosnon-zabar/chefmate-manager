@@ -29,6 +29,7 @@ interface MasterIngredient {
   id: string
   name: string
   name_en: string | null
+  image_url: string | null
   default_unit_id: string | null
   default_aisle_id: string | null
   unit_ids: string[]
@@ -152,7 +153,7 @@ export default function RecipeEditPage() {
         fetch("/api/portion-types").then(r => r.json()).then(j => setAllPortionTypes(j.data ?? [])).catch(() => {}),
         fetch("/api/ingredients").then(r => r.json()).then(j => setCatalogIngredients(
           (j.data ?? []).map((i: Record<string, unknown>) => ({
-            id: i.id, name: i.name, name_en: i.name_en,
+            id: i.id, name: i.name, name_en: i.name_en, image_url: i.image_url ?? null,
             default_unit_id: i.default_unit_id, default_aisle_id: i.default_aisle_id,
             unit_ids: ((i.ingredient_units as Array<{ unit: { id: string } | null }>) ?? [])
               .map((iu) => iu.unit?.id)
@@ -1038,21 +1039,23 @@ function IngredientSection({
                   <circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
                 </svg>
 
-                {/* TheMealDB image or empty placeholder for alignment */}
-                {nameEn ? (
-                  <img
-                    src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(nameEn)}-Small.png`}
-                    alt=""
-                    className="w-6 h-6 object-contain flex-shrink-0"
-                    loading="lazy"
-                    onError={(e) => {
-                      const el = e.target as HTMLImageElement
-                      el.style.display = "none"
-                    }}
-                  />
-                ) : (
-                  <span className="w-6 h-6 flex-shrink-0" />
-                )}
+                {/* Ingredient image: uploaded > TheMealDB > empty */}
+                {(() => {
+                  const adminBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
+                    ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+                  const masterImg = ing.master?.image_url
+                  const imgSrc = masterImg
+                    ? (masterImg.startsWith("http") ? masterImg : `${adminBase}${masterImg}`)
+                    : nameEn
+                      ? `https://www.themealdb.com/images/ingredients/${encodeURIComponent(nameEn)}-Small.png`
+                      : null
+                  return imgSrc ? (
+                    <img src={imgSrc} alt="" className="w-6 h-6 object-contain flex-shrink-0 rounded" loading="lazy"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }} />
+                  ) : (
+                    <span className="w-6 h-6 flex-shrink-0" />
+                  )
+                })()}
 
                 {/* Name with autocomplete */}
                 <div className="relative">
@@ -1078,14 +1081,19 @@ function IngredientSection({
                           onMouseDown={() => selectFromCatalog(idx, c)}
                           className="w-full text-left px-3 py-1.5 text-xs text-brun hover:bg-creme flex items-center gap-2"
                         >
-                          {c.name_en && (
-                            <img
-                              src={`https://www.themealdb.com/images/ingredients/${encodeURIComponent(c.name_en)}-Small.png`}
-                              alt=""
-                              className="w-5 h-5 object-contain"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
-                            />
-                          )}
+                          {(() => {
+                            const aBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
+                              ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+                            const iSrc = c.image_url
+                              ? (c.image_url.startsWith("http") ? c.image_url : `${aBase}${c.image_url}`)
+                              : c.name_en
+                                ? `https://www.themealdb.com/images/ingredients/${encodeURIComponent(c.name_en)}-Small.png`
+                                : null
+                            return iSrc ? (
+                              <img src={iSrc} alt="" className="w-5 h-5 object-contain rounded"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }} />
+                            ) : null
+                          })()}
                           <span>{c.name}</span>
                         </button>
                       ))}
