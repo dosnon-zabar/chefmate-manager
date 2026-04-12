@@ -23,6 +23,7 @@ interface Site {
   baseline: string | null
   events_page_enabled: boolean
   about_page_enabled: boolean
+  recipes_page_enabled: boolean
   facebook_url: string | null
   instagram_url: string | null
   linkedin_url: string | null
@@ -49,6 +50,33 @@ interface Site {
   contact_address: string | null
   footer_text: string | null
   lifecycle_status: string
+  // Homepage bloc toggles & content
+  home_events_enabled: boolean
+  home_past_events_enabled: boolean
+  home_recipes_enabled: boolean
+  home_about_enabled: boolean
+  home_events_title: string | null
+  home_events_subtitle: string | null
+  home_past_events_title: string | null
+  home_past_events_subtitle: string | null
+  home_recipes_title: string | null
+  home_recipes_subtitle: string | null
+  home_about_title: string | null
+  home_about_text: string | null
+  // Page titles
+  recipes_page_title: string | null
+  events_page_title: string | null
+  about_page_title: string | null
+  // About sections
+  about_values_enabled: boolean
+  about_team_enabled: boolean
+  about_contact_enabled: boolean
+  about_values_title: string | null
+  about_values: { title: string; text: string }[] | null
+  about_team_title: string | null
+  about_team_members: { name: string; role: string; image_url: string }[] | null
+  about_contact_title: string | null
+  about_contact_text: string | null
 }
 
 type TabKey = "general" | "accueil" | "recettes" | "evenements" | "apropos" | "footer"
@@ -116,7 +144,7 @@ export default function SiteEditPage() {
   const tabs: { key: TabKey; label: string; hidden?: boolean }[] = [
     { key: "general", label: "Général" },
     { key: "accueil", label: "Accueil" },
-    { key: "recettes", label: "Recettes" },
+    { key: "recettes", label: "Recettes", hidden: site.recipes_page_enabled === false },
     { key: "evenements", label: "Événements", hidden: !site.events_page_enabled },
     { key: "apropos", label: "À propos", hidden: !site.about_page_enabled },
     { key: "footer", label: "Footer & Contact" },
@@ -146,10 +174,10 @@ export default function SiteEditPage() {
       </div>
 
       {activeTab === "general" && <GeneralTab site={site} teams={teams} isAdmin={isAdmin} onPatch={patchSite} onRefresh={loadSite} />}
-      {activeTab === "accueil" && <ContentTab site={site} prefix="home" label="Accueil" onPatch={patchSite} onRefresh={loadSite} />}
-      {activeTab === "recettes" && <ContentTab site={site} prefix="recipes" label="Recettes" onPatch={patchSite} onRefresh={loadSite} />}
-      {activeTab === "evenements" && <ContentTab site={site} prefix="events" label="Événements" onPatch={patchSite} onRefresh={loadSite} />}
-      {activeTab === "apropos" && <ContentTab site={site} prefix="about" label="À propos" introField="about_text" onPatch={patchSite} onRefresh={loadSite} />}
+      {activeTab === "accueil" && <HomeTab site={site} onPatch={patchSite} onRefresh={loadSite} />}
+      {activeTab === "recettes" && <ContentTab site={site} prefix="recipes" label="Recettes" pageTitleField="recipes_page_title" onPatch={patchSite} onRefresh={loadSite} />}
+      {activeTab === "evenements" && <ContentTab site={site} prefix="events" label="Événements" pageTitleField="events_page_title" onPatch={patchSite} onRefresh={loadSite} />}
+      {activeTab === "apropos" && <AboutTab site={site} onPatch={patchSite} onRefresh={loadSite} />}
       {activeTab === "footer" && <FooterTab site={site} onPatch={patchSite} onRefresh={loadSite} />}
     </div>
   )
@@ -235,6 +263,12 @@ function GeneralTab({ site, teams, isAdmin, onPatch, onRefresh }: {
           <span className="text-sm text-brun">Page Événements</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={site.recipes_page_enabled}
+            onChange={async e => { if (await onPatch({ recipes_page_enabled: e.target.checked })) void onRefresh() }}
+            className="rounded border-brun/20 text-orange focus:ring-orange/30" />
+          <span className="text-sm text-brun">Page Recettes</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={site.about_page_enabled}
             onChange={async e => { if (await onPatch({ about_page_enabled: e.target.checked })) void onRefresh() }}
             className="rounded border-brun/20 text-orange focus:ring-orange/30" />
@@ -271,17 +305,14 @@ function SocialField({ field, site, onPatch, onRefresh }: {
 
 // ---- CONTENT TAB (reusable for accueil, recettes, events, about) ----
 
-function ContentTab({ site, prefix, label, introField, onPatch, onRefresh }: {
-  site: Site; prefix: string; label: string; introField?: string
+function SeoCard({ site, prefix, label, onPatch, onRefresh }: {
+  site: Site; prefix: string; label: string
   onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
 }) {
-  const introKey = introField ?? `${prefix}_intro`
   const seoTitleKey = `${prefix}_seo_title`
   const seoDescKey = `${prefix}_seo_desc`
   const seoImageKey = `${prefix}_seo_image`
-
   const s = site as unknown as Record<string, unknown>
-  const [introText, setIntroText] = useState((s[introKey] as string) ?? "")
   const [seoTitle, setSeoTitle] = useState((s[seoTitleKey] as string) ?? "")
   const [seoDesc, setSeoDesc] = useState((s[seoDescKey] as string) ?? "")
   const [seoImage, setSeoImage] = useState((s[seoImageKey] as string) ?? "")
@@ -292,7 +323,65 @@ function ContentTab({ site, prefix, label, introField, onPatch, onRefresh }: {
   }
 
   return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+      <h2 className="font-serif text-lg text-brun">SEO — {label}</h2>
+      <div>
+        <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Titre SEO</label>
+        <input type="text" value={seoTitle} onChange={e => setSeoTitle(e.target.value)}
+          onBlur={() => saveField(seoTitleKey, seoTitle.trim() || null)}
+          className={INPUT} placeholder="Titre pour les moteurs de recherche" />
+        <p className="text-[10px] text-brun-light mt-1">{seoTitle.length}/60 caractères recommandés</p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Description SEO</label>
+        <textarea value={seoDesc} onChange={e => setSeoDesc(e.target.value)}
+          onBlur={() => saveField(seoDescKey, seoDesc.trim() || null)}
+          rows={3} className={`${INPUT} resize-none`} placeholder="Description pour les moteurs de recherche" />
+        <p className="text-[10px] text-brun-light mt-1">{seoDesc.length}/160 caractères recommandés</p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Image OG (Open Graph)</label>
+        <input type="text" value={seoImage} onChange={e => setSeoImage(e.target.value)}
+          onBlur={() => saveField(seoImageKey, seoImage.trim() || null)}
+          className={INPUT} placeholder="URL de l'image de partage" />
+        {seoImage && (
+          <div className="mt-2 w-48 h-24 rounded-lg border border-brun/10 overflow-hidden">
+            <img src={seoImage} alt="OG preview" className="w-full h-full object-cover"
+              onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ContentTab({ site, prefix, label, introField, pageTitleField, hideSeo, onPatch, onRefresh }: {
+  site: Site; prefix: string; label: string; introField?: string; pageTitleField?: string; hideSeo?: boolean
+  onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
+}) {
+  const introKey = introField ?? `${prefix}_intro`
+
+  const s = site as unknown as Record<string, unknown>
+  const [introText, setIntroText] = useState((s[introKey] as string) ?? "")
+  const [pageTitle, setPageTitle] = useState(pageTitleField ? ((s[pageTitleField] as string) ?? "") : "")
+  const { showToast } = useToast()
+
+  async function saveField(field: string, value: unknown) {
+    if (await onPatch({ [field]: value })) { showToast("Enregistré"); void onRefresh() }
+  }
+
+  return (
     <div className="space-y-4">
+      {/* Page title */}
+      {pageTitleField && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <h2 className="font-serif text-lg text-brun mb-3">Titre de la page</h2>
+          <input type="text" value={pageTitle} onChange={e => setPageTitle(e.target.value)}
+            onBlur={() => saveField(pageTitleField, pageTitle.trim() || null)}
+            className={INPUT} placeholder={`Titre affiché sur la page ${label}`} />
+        </div>
+      )}
+
       {/* Intro text */}
       <div className="bg-white rounded-2xl p-6 shadow-sm">
         <h2 className="font-serif text-lg text-brun mb-3">
@@ -304,36 +393,360 @@ function ContentTab({ site, prefix, label, introField, onPatch, onRefresh }: {
         />
       </div>
 
-      {/* SEO */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
-        <h2 className="font-serif text-lg text-brun">SEO — {label}</h2>
-        <div>
-          <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Titre SEO</label>
-          <input type="text" value={seoTitle} onChange={e => setSeoTitle(e.target.value)}
-            onBlur={() => saveField(seoTitleKey, seoTitle.trim() || null)}
-            className={INPUT} placeholder="Titre pour les moteurs de recherche" />
-          <p className="text-[10px] text-brun-light mt-1">{seoTitle.length}/60 caractères recommandés</p>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Description SEO</label>
-          <textarea value={seoDesc} onChange={e => setSeoDesc(e.target.value)}
-            onBlur={() => saveField(seoDescKey, seoDesc.trim() || null)}
-            rows={3} className={`${INPUT} resize-none`} placeholder="Description pour les moteurs de recherche" />
-          <p className="text-[10px] text-brun-light mt-1">{seoDesc.length}/160 caractères recommandés</p>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Image OG (Open Graph)</label>
-          <input type="text" value={seoImage} onChange={e => setSeoImage(e.target.value)}
-            onBlur={() => saveField(seoImageKey, seoImage.trim() || null)}
-            className={INPUT} placeholder="URL de l'image de partage" />
-          {seoImage && (
-            <div className="mt-2 w-48 h-24 rounded-lg border border-brun/10 overflow-hidden">
-              <img src={seoImage} alt="OG preview" className="w-full h-full object-cover"
-                onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-            </div>
-          )}
-        </div>
+      {/* SEO — only if not handled externally */}
+      {!hideSeo && <SeoCard site={site} prefix={prefix} label={label} onPatch={onPatch} onRefresh={onRefresh} />}
+    </div>
+  )
+}
+
+// ---- HOME TAB ----
+
+function HomeTab({ site, onPatch, onRefresh }: {
+  site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
+}) {
+  return (
+    <div className="space-y-4">
+      <ContentTab site={site} prefix="home" label="Accueil" hideSeo onPatch={onPatch} onRefresh={onRefresh} />
+
+      {/* Sections de la page d'accueil */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-6">
+        <h2 className="font-serif text-lg text-brun">Sections de la page d&apos;accueil</h2>
+
+        <HomeSectionBlock site={site} onPatch={onPatch} onRefresh={onRefresh}
+          enabledField="home_events_enabled" titleField="home_events_title" subtitleField="home_events_subtitle"
+          label="Événements à venir" />
+
+        <hr className="border-brun/10" />
+
+        <HomeSectionBlock site={site} onPatch={onPatch} onRefresh={onRefresh}
+          enabledField="home_past_events_enabled" titleField="home_past_events_title" subtitleField="home_past_events_subtitle"
+          label="Événements passés" />
+
+        <hr className="border-brun/10" />
+
+        <HomeSectionBlock site={site} onPatch={onPatch} onRefresh={onRefresh}
+          enabledField="home_recipes_enabled" titleField="home_recipes_title" subtitleField="home_recipes_subtitle"
+          label="Recettes" />
+
+        <hr className="border-brun/10" />
+
+        <HomeSectionBlock site={site} onPatch={onPatch} onRefresh={onRefresh}
+          enabledField="home_about_enabled" titleField="home_about_title" subtitleField="home_about_text"
+          label="À propos" subtitleLabel="Texte" />
       </div>
+
+      <SeoCard site={site} prefix="home" label="Accueil" onPatch={onPatch} onRefresh={onRefresh} />
+    </div>
+  )
+}
+
+function HomeSectionBlock({ site, onPatch, onRefresh, enabledField, titleField, subtitleField, label, subtitleLabel = "Sous-titre" }: {
+  site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
+  enabledField: string; titleField: string; subtitleField: string; label: string; subtitleLabel?: string
+}) {
+  const s = site as unknown as Record<string, unknown>
+  const enabled = s[enabledField] as boolean
+  const [title, setTitle] = useState((s[titleField] as string) ?? "")
+  const [subtitle, setSubtitle] = useState((s[subtitleField] as string) ?? "")
+  const { showToast } = useToast()
+
+  async function saveField(field: string, value: unknown) {
+    if (await onPatch({ [field]: value })) { showToast("Enregistré"); void onRefresh() }
+  }
+
+  return (
+    <div className="space-y-3">
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={enabled}
+          onChange={async e => { if (await onPatch({ [enabledField]: e.target.checked })) { showToast("Enregistré"); void onRefresh() } }}
+          className="rounded border-brun/20 text-orange focus:ring-orange/30" />
+        <span className="text-sm font-medium text-brun">{label}</span>
+      </label>
+      {enabled && (
+        <div className="grid grid-cols-2 gap-4 pl-6">
+          <div>
+            <label className="text-xs text-brun-light mb-1 block">Titre</label>
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+              onBlur={() => saveField(titleField, title.trim() || null)}
+              className={INPUT} />
+          </div>
+          <div>
+            <label className="text-xs text-brun-light mb-1 block">{subtitleLabel}</label>
+            <input type="text" value={subtitle} onChange={e => setSubtitle(e.target.value)}
+              onBlur={() => saveField(subtitleField, subtitle.trim() || null)}
+              className={INPUT} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---- ABOUT TAB ----
+
+function AboutTab({ site, onPatch, onRefresh }: {
+  site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
+}) {
+  return (
+    <div className="space-y-4">
+      <ContentTab site={site} prefix="about" label="À propos" introField="about_text" pageTitleField="about_page_title" hideSeo onPatch={onPatch} onRefresh={onRefresh} />
+      <AboutValuesSection site={site} onPatch={onPatch} onRefresh={onRefresh} />
+      <AboutTeamSection site={site} onPatch={onPatch} onRefresh={onRefresh} />
+      <AboutContactSection site={site} onPatch={onPatch} onRefresh={onRefresh} />
+      <SeoCard site={site} prefix="about" label="À propos" onPatch={onPatch} onRefresh={onRefresh} />
+    </div>
+  )
+}
+
+function AboutValuesSection({ site, onPatch, onRefresh }: {
+  site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
+}) {
+  const [title, setTitle] = useState(site.about_values_title ?? "")
+  const [values, setValues] = useState<{ title: string; text: string }[]>(site.about_values ?? [])
+  const { showToast } = useToast()
+
+  async function saveField(field: string, value: unknown) {
+    if (await onPatch({ [field]: value })) { showToast("Enregistré"); void onRefresh() }
+  }
+
+  function updateValue(index: number, key: "title" | "text", val: string) {
+    const next = [...values]
+    next[index] = { ...next[index], [key]: val }
+    setValues(next)
+  }
+
+  async function saveValues(updated?: typeof values) {
+    const v = updated ?? values
+    await saveField("about_values", v.length ? v : null)
+  }
+
+  function addValue() {
+    const next = [...values, { title: "", text: "" }]
+    setValues(next)
+  }
+
+  async function removeValue(index: number) {
+    const next = values.filter((_, i) => i !== index)
+    setValues(next)
+    await saveValues(next)
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-lg text-brun">Nos valeurs</h2>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={site.about_values_enabled}
+            onChange={async e => { if (await onPatch({ about_values_enabled: e.target.checked })) { showToast("Enregistré"); void onRefresh() } }}
+            className="rounded border-brun/20 text-orange focus:ring-orange/30" />
+          <span className="text-xs text-brun-light">Activé</span>
+        </label>
+      </div>
+
+      {site.about_values_enabled && (
+        <>
+          <div>
+            <label className="text-xs text-brun-light mb-1 block">Titre de la section</label>
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+              onBlur={() => saveField("about_values_title", title.trim() || null)}
+              className={INPUT} placeholder="Nos valeurs" />
+          </div>
+
+          <div className="space-y-3">
+            {values.map((v, i) => (
+              <div key={i} className="border border-brun/10 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input type="text" value={v.title} onChange={e => updateValue(i, "title", e.target.value)}
+                    onBlur={() => saveValues()} className={`${INPUT} flex-1`} placeholder="Titre de la valeur" />
+                  <button type="button" onClick={() => removeValue(i)}
+                    className="px-2 py-1 text-red-400 hover:text-red-600 transition-colors text-sm">✕</button>
+                </div>
+                <textarea value={v.text} onChange={e => updateValue(i, "text", e.target.value)}
+                  onBlur={() => saveValues()} rows={2} className={`${INPUT} resize-none`} placeholder="Description de la valeur" />
+              </div>
+            ))}
+          </div>
+
+          <button type="button" onClick={addValue}
+            className="text-sm text-orange hover:text-orange-light transition-colors">
+            + Ajouter une valeur
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function AboutTeamSection({ site, onPatch, onRefresh }: {
+  site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
+}) {
+  const [title, setTitle] = useState(site.about_team_title ?? "")
+  const [members, setMembers] = useState<{ name: string; role: string; image_url: string }[]>(site.about_team_members ?? [])
+  const [uploading, setUploading] = useState<number | null>(null)
+  const { showToast } = useToast()
+
+  async function saveField(field: string, value: unknown) {
+    if (await onPatch({ [field]: value })) { showToast("Enregistré"); void onRefresh() }
+  }
+
+  function updateMember(index: number, key: "name" | "role" | "image_url", val: string) {
+    const next = [...members]
+    next[index] = { ...next[index], [key]: val }
+    setMembers(next)
+  }
+
+  async function saveMembers(updated?: typeof members) {
+    const m = updated ?? members
+    await saveField("about_team_members", m.length ? m : null)
+  }
+
+  function addMember() {
+    const next = [...members, { name: "", role: "", image_url: "" }]
+    setMembers(next)
+  }
+
+  async function removeMember(index: number) {
+    const next = members.filter((_, i) => i !== index)
+    setMembers(next)
+    await saveMembers(next)
+  }
+
+  async function uploadImage(index: number, file: File) {
+    setUploading(index)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("prefix", "equipe")
+      const res = await fetch("/api/upload-image", { method: "POST", body: formData })
+      const json = await res.json()
+      const url = json.data?.url ?? json.url
+      if (url) {
+        const next = [...members]
+        next[index] = { ...next[index], image_url: url }
+        setMembers(next)
+        await saveMembers(next)
+        showToast("Image uploadée")
+      }
+    } catch {
+      showToast("Erreur upload", "error")
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-lg text-brun">Équipe</h2>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={site.about_team_enabled}
+            onChange={async e => { if (await onPatch({ about_team_enabled: e.target.checked })) { showToast("Enregistré"); void onRefresh() } }}
+            className="rounded border-brun/20 text-orange focus:ring-orange/30" />
+          <span className="text-xs text-brun-light">Activé</span>
+        </label>
+      </div>
+
+      {site.about_team_enabled && (
+        <>
+          <div>
+            <label className="text-xs text-brun-light mb-1 block">Titre de la section</label>
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+              onBlur={() => saveField("about_team_title", title.trim() || null)}
+              className={INPUT} placeholder="Notre équipe" />
+          </div>
+
+          <div className="space-y-4">
+            {members.map((m, i) => (
+              <div key={i} className="border border-brun/10 rounded-xl p-4 space-y-3">
+                <div className="flex justify-between items-start">
+                  <div className="flex gap-4 items-start flex-1">
+                    {/* Photo */}
+                    <div className="flex-shrink-0">
+                      {m.image_url ? (
+                        <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-brun/10">
+                          <img src={m.image_url} alt={m.name} className="w-full h-full object-cover"
+                            onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                        </div>
+                      ) : (
+                        <div className="w-20 h-20 rounded-lg border border-dashed border-brun/20 flex items-center justify-center bg-creme">
+                          <span className="text-2xl text-brun-light/40">👤</span>
+                        </div>
+                      )}
+                      <label className="mt-1 block text-center">
+                        <span className="text-[10px] text-orange cursor-pointer hover:text-orange-light">
+                          {uploading === i ? "Upload..." : "Photo"}
+                        </span>
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(i, f); e.target.value = "" }} />
+                      </label>
+                    </div>
+                    {/* Infos */}
+                    <div className="flex-1 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="text" value={m.name} onChange={e => updateMember(i, "name", e.target.value)}
+                          onBlur={() => saveMembers()} className={INPUT} placeholder="Nom" />
+                        <input type="text" value={m.role} onChange={e => updateMember(i, "role", e.target.value)}
+                          onBlur={() => saveMembers()} className={INPUT} placeholder="Rôle / Fonction" />
+                      </div>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => removeMember(i)}
+                    className="px-2 py-1 text-red-400 hover:text-red-600 transition-colors text-sm ml-2">✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button type="button" onClick={addMember}
+            className="text-sm text-orange hover:text-orange-light transition-colors">
+            + Ajouter un membre
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function AboutContactSection({ site, onPatch, onRefresh }: {
+  site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
+}) {
+  const [title, setTitle] = useState(site.about_contact_title ?? "")
+  const [text, setText] = useState(site.about_contact_text ?? "")
+  const { showToast } = useToast()
+
+  async function saveField(field: string, value: unknown) {
+    if (await onPatch({ [field]: value })) { showToast("Enregistré"); void onRefresh() }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-lg text-brun">Contact</h2>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={site.about_contact_enabled}
+            onChange={async e => { if (await onPatch({ about_contact_enabled: e.target.checked })) { showToast("Enregistré"); void onRefresh() } }}
+            className="rounded border-brun/20 text-orange focus:ring-orange/30" />
+          <span className="text-xs text-brun-light">Activé</span>
+        </label>
+      </div>
+
+      {site.about_contact_enabled && (
+        <>
+          <div>
+            <label className="text-xs text-brun-light mb-1 block">Titre de la section</label>
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+              onBlur={() => saveField("about_contact_title", title.trim() || null)}
+              className={INPUT} placeholder="Contactez-nous" />
+          </div>
+          <div>
+            <label className="text-xs text-brun-light mb-1 block">Texte</label>
+            <RichTextEditor
+              value={text}
+              onChange={(html) => { setText(html); saveField("about_contact_text", html || null) }}
+            />
+          </div>
+        </>
+      )}
     </div>
   )
 }
