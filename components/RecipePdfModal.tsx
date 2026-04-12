@@ -2,11 +2,12 @@
 
 import { useState } from "react"
 import { jsPDF } from "jspdf"
+import { formatIngredientNatural } from "@/lib/format-ingredient"
 
 interface Ingredient {
   name: string
   quantity: number | null
-  unit?: { abbreviation: string } | null
+  unit?: { abbreviation: string; abbreviation_plural?: string | null } | null
   aisle?: { name: string; color: string } | null
   comment?: string | null
 }
@@ -31,48 +32,6 @@ interface Props {
   recipe: RecipeForPdf
 }
 
-const PIECE_UNITS = ["pcs", "pièce", "pièces", "piece", "u"]
-const PLURALIZABLE_UNITS = [
-  "gousse",
-  "tête",
-  "tranche",
-  "feuille",
-  "botte",
-  "branche",
-  "brin",
-]
-
-function formatIngredient(
-  name: string,
-  quantity: number,
-  unitAbbrev: string | null | undefined
-): string {
-  const n = name.toLowerCase()
-  const isPiece =
-    !unitAbbrev || PIECE_UNITS.includes(unitAbbrev.toLowerCase())
-
-  if (isPiece) {
-    const displayName =
-      quantity >= 2 &&
-      !n.endsWith("s") &&
-      !n.endsWith("x") &&
-      !n.endsWith("z")
-        ? n + "s"
-        : n
-    return `${quantity} ${displayName}`
-  }
-
-  const unitLower = (unitAbbrev || "").toLowerCase()
-  let displayUnit = unitAbbrev || ""
-  if (quantity >= 2 && PLURALIZABLE_UNITS.includes(unitLower)) {
-    displayUnit = displayUnit + "s"
-  }
-
-  const startsWithVowel = /^[aeiouyàâäéèêëïîôùûüœæh]/i.test(n)
-  const liaison = startsWithVowel ? "d'" : "de "
-
-  return `${quantity} ${displayUnit} ${liaison}${n}`
-}
 
 function parseHtmlToText(html: string): string {
   if (!html) return ""
@@ -181,7 +140,7 @@ export default function RecipePdfModal({ open, onClose, recipe }: Props) {
       doc.circle(margin + 2, y - 1.2, 1.5, "F")
 
       const text = ing.scaledQty !== null
-        ? formatIngredient(ing.name, ing.scaledQty, ing.unit?.abbreviation)
+        ? formatIngredientNatural(ing.name, ing.scaledQty, ing.unit?.abbreviation, ing.unit?.abbreviation_plural)
         : ing.name.toLowerCase()
 
       const commentText = ing.comment ? ` (${ing.comment})` : ""
@@ -335,10 +294,11 @@ export default function RecipePdfModal({ open, onClose, recipe }: Props) {
                   )}
                   <span>
                     {ing.scaledQty !== null
-                      ? formatIngredient(
+                      ? formatIngredientNatural(
                           ing.name,
                           ing.scaledQty,
-                          ing.unit?.abbreviation
+                          ing.unit?.abbreviation,
+                          ing.unit?.abbreviation_plural
                         )
                       : ing.name.toLowerCase()}
                     {ing.comment && (

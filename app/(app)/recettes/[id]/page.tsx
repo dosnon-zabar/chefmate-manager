@@ -19,7 +19,7 @@ const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
 
 // ---- Types ----
 
-interface UnitRef { id: string; name: string; abbreviation: string }
+interface UnitRef { id: string; name: string; abbreviation: string; abbreviation_plural?: string | null }
 interface AisleRef { id: string; name: string; color: string }
 interface SeasonRef { id: string; name: string; icon: string }
 interface TagRef { id: string; name: string }
@@ -84,58 +84,10 @@ interface Recipe {
   recipe_steps: RecipeStep[]
 }
 
+import { formatIngredientNatural } from "@/lib/format-ingredient"
+
 const INPUT_CLASS =
   "w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30"
-
-/**
- * Format an ingredient for natural French display.
- *
- * Rules:
- *  - Unit is "pcs" or piece-like → "{qty} {name}" (no unit shown)
- *    e.g. "1 citron", "2 poireaux"
- *  - Otherwise → "{qty} {unit} de/d' {name}"
- *    e.g. "10 cl d'eau", "500 g de farine", "2 kg de poireaux"
- *  - "d'" before vowels and h muet, "de" before consonants
- *  - No quantity (null/0) → just the name
- */
-function formatIngredientNatural(
-  name: string,
-  quantity: number | null,
-  unitAbbrev: string | null | undefined
-): string {
-  const n = name.toLowerCase()
-  const qty = quantity ?? 0
-
-  if (!qty && !unitAbbrev) return n
-  if (!qty) return n
-
-  const PIECE_UNITS = ["pcs", "pièce", "pièces", "piece", "u"]
-  const isPiece = !unitAbbrev || PIECE_UNITS.includes(unitAbbrev.toLowerCase())
-
-  // Units that get pluralized with "s" when qty >= 2
-  const PLURALIZABLE_UNITS = ["gousse", "tête", "tranche", "feuille", "botte", "branche", "brin"]
-
-  if (isPiece) {
-    // Add "s" to the name when qty >= 2
-    const displayName = qty >= 2 && !n.endsWith("s") && !n.endsWith("x") && !n.endsWith("z")
-      ? n + "s"
-      : n
-    return `${qty} ${displayName}`
-  }
-
-  // Check if unit should be pluralized
-  const unitLower = (unitAbbrev || "").toLowerCase()
-  let displayUnit = unitAbbrev || ""
-  if (qty >= 2 && PLURALIZABLE_UNITS.includes(unitLower)) {
-    displayUnit = displayUnit + "s"
-  }
-
-  // Determine de/d'
-  const startsWithVowel = /^[aeiouyàâäéèêëïîôùûüœæh]/i.test(n)
-  const liaison = startsWithVowel ? "d'" : "de "
-
-  return `${qty} ${displayUnit} ${liaison}${n}`
-}
 
 function getAdminBase() {
   if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
@@ -1267,7 +1219,8 @@ function IngredientSection({
                       {formatIngredientNatural(
                         ing.name,
                         ing.quantity,
-                        ing.unit?.abbreviation
+                        ing.unit?.abbreviation,
+                        ing.unit?.abbreviation_plural
                       )}
                       {ing.comment && (
                         <span className="text-brun-light italic ml-1">
