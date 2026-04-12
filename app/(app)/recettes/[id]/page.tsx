@@ -74,6 +74,9 @@ interface Recipe {
   status: string
   is_private: boolean
   is_duplicable: boolean
+  price_range: number | null
+  difficulty: number | null
+  presentation: string | null
   images: ImageObj[]
   portion_type_id: string | null
   portion_type: { id: string; name: string } | null
@@ -381,6 +384,15 @@ function InfoSection({
     if (await onPatch({ season_ids: Array.from(next) })) void onRefresh()
   }
 
+  // Presentation text state
+  const [presentationText, setPresentationText] = useState(recipe.presentation ?? "")
+
+  async function savePresentation(html: string) {
+    if (html !== (recipe.presentation ?? "")) {
+      if (await onPatch({ presentation: html || null })) void onRefresh()
+    }
+  }
+
   // Tag autocomplete state
   const [tagInput, setTagInput] = useState("")
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
@@ -576,6 +588,71 @@ function InfoSection({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Price + Difficulty */}
+        <div className="flex gap-4">
+          {/* Price range */}
+          <div className="flex-1">
+            <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Prix</h3>
+            <div className="flex gap-1">
+              {[1, 2, 3].map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={async () => {
+                    const value = recipe.price_range === level ? null : level
+                    if (await onPatch({ price_range: value })) void onRefresh()
+                  }}
+                  className={`px-3 py-1.5 text-sm rounded-lg border transition-colors cursor-pointer ${
+                    (recipe.price_range ?? 0) >= level
+                      ? "bg-orange text-white border-orange"
+                      : "bg-white text-brun-light border-brun/10 hover:border-orange/40"
+                  }`}
+                >
+                  {"€".repeat(level)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Difficulty */}
+          <div className="flex-1">
+            <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Difficulté</h3>
+            <div className="flex gap-1">
+              {[1, 2, 3].map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={async () => {
+                    const value = recipe.difficulty === level ? null : level
+                    if (await onPatch({ difficulty: value })) void onRefresh()
+                  }}
+                  className={`px-3 py-1.5 text-sm rounded-lg border transition-colors cursor-pointer flex items-center gap-0.5 ${
+                    (recipe.difficulty ?? 0) >= level
+                      ? "bg-orange text-white border-orange"
+                      : "bg-white text-brun-light border-brun/10 hover:border-orange/40"
+                  }`}
+                  title={`Difficulté ${level}/3`}
+                >
+                  {Array.from({ length: level }).map((_, i) => (
+                    <svg key={i} className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C9.24 2 7 4.24 7 7c0 1.62.78 3.06 2 3.97V12h6v-1.03c1.22-.91 2-2.35 2-3.97 0-2.76-2.24-5-5-5zM9 16v2h6v-2H9zm3 6c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2z" />
+                    </svg>
+                  ))}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Presentation text */}
+        <div>
+          <h3 className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2">Présentation de la recette</h3>
+          <RichTextEditor
+            value={presentationText}
+            onChange={(html) => { setPresentationText(html); savePresentation(html) }}
+          />
         </div>
       </div>
 

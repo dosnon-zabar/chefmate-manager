@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
 import SiteFormPanel, {
@@ -31,6 +32,7 @@ const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
 ]
 
 export default function SitesPage() {
+  const router = useRouter()
   const { hasRole, can } = useAuth()
   const isAdminGlobal = hasRole("Admin global")
   const canCreate =
@@ -324,8 +326,7 @@ export default function SitesPage() {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    setEditingSite(site)
-                    setPanelOpen(true)
+                    router.push(`/sites/${site.id}`)
                   }}
                   className="inline-flex items-center gap-1.5 text-xs text-brun-light hover:text-orange transition-colors"
                 >
