@@ -20,6 +20,7 @@ export interface SiteRow {
   linkedin_url: string | null
   youtube_url: string | null
   tiktok_url: string | null
+  home_hero_image: string | null
   lifecycle_status: SiteLifecycleStatus
   created_at: string
   updated_at: string

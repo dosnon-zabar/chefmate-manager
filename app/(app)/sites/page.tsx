@@ -242,12 +242,22 @@ export default function SitesPage() {
           return (
             <div
               key={site.id}
-              className="bg-white rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col"
-              onClick={() => {
-                setEditingSite(site)
-                setPanelOpen(true)
-              }}
+              className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col overflow-hidden"
+              onClick={() => router.push(`/sites/${site.id}`)}
             >
+              {(() => {
+                const heroUrl = site.home_hero_image
+                  ? site.home_hero_image.startsWith("http")
+                    ? site.home_hero_image
+                    : `${typeof window !== "undefined" && window.location.hostname !== "localhost" ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"}${site.home_hero_image}`
+                  : null
+                return heroUrl ? (
+                  <div className="h-28 overflow-hidden">
+                    <img src={heroUrl} alt="" className="w-full h-full object-cover" />
+                  </div>
+                ) : null
+              })()}
+              <div className="p-5 flex flex-col flex-1">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="font-serif text-lg text-brun truncate">
@@ -320,32 +330,7 @@ export default function SitesPage() {
                 </div>
               </div>
 
-              {/* Footer */}
-              <div className="mt-4 pt-3 border-t border-brun/10 flex justify-end">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    router.push(`/sites/${site.id}`)
-                  }}
-                  className="inline-flex items-center gap-1.5 text-xs text-brun-light hover:text-orange transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.75}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                    />
-                  </svg>
-                  Modifier
-                </button>
-              </div>
+              </div>{/* close p-5 wrapper */}
             </div>
           )
         })}

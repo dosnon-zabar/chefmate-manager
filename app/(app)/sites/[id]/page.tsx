@@ -84,6 +84,14 @@ type TabKey = "general" | "accueil" | "recettes" | "evenements" | "apropos" | "f
 
 const INPUT = "w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30"
 
+function resolveImg(url?: string | null): string | undefined {
+  if (!url) return undefined
+  if (url.startsWith("http")) return url
+  const base = typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+  return `${base}${url}`
+}
+
 export default function SiteEditPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -424,10 +432,10 @@ function HomeTab({ site, onPatch, onRefresh }: {
       {/* Hero image */}
       <div className="bg-white rounded-2xl p-6 shadow-sm space-y-3">
         <h2 className="font-serif text-lg text-brun">Image principale (hero)</h2>
-        {site.home_hero_image ? (
+        {resolveImg(site.home_hero_image) ? (
           <div className="relative">
             <div className="w-full h-48 rounded-lg border border-brun/10 overflow-hidden">
-              <img src={site.home_hero_image} alt="Hero" className="w-full h-full object-cover" />
+              <img src={resolveImg(site.home_hero_image)} alt="Hero" className="w-full h-full object-cover" />
             </div>
             <div className="flex gap-2 mt-2">
               <label className="px-3 py-1.5 text-xs bg-orange text-white rounded-lg hover:bg-orange-light transition-colors cursor-pointer">
@@ -604,9 +612,9 @@ function AboutValuesSection({ site, onPatch, onRefresh }: {
                 <div className="flex gap-3 items-start">
                   {/* Picto */}
                   <div className="flex-shrink-0">
-                    {v.icon ? (
+                    {resolveImg(v.icon) ? (
                       <div className="w-14 h-14 rounded-lg border border-brun/10 overflow-hidden bg-creme">
-                        <img src={v.icon} alt="" className="w-full h-full object-contain"
+                        <img src={resolveImg(v.icon)} alt="" className="w-full h-full object-contain"
                           onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
                       </div>
                     ) : (
@@ -743,9 +751,9 @@ function AboutTeamSection({ site, onPatch, onRefresh }: {
                   <div className="flex gap-4 items-start flex-1">
                     {/* Photo */}
                     <div className="flex-shrink-0">
-                      {m.image_url ? (
+                      {resolveImg(m.image_url) ? (
                         <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-brun/10">
-                          <img src={m.image_url} alt={m.name} className="w-full h-full object-cover"
+                          <img src={resolveImg(m.image_url)} alt={m.name} className="w-full h-full object-cover"
                             onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
                         </div>
                       ) : (
