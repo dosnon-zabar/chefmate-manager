@@ -29,6 +29,7 @@ interface Site {
   linkedin_url: string | null
   youtube_url: string | null
   tiktok_url: string | null
+  home_hero_image: string | null
   home_intro: string | null
   home_seo_title: string | null
   home_seo_desc: string | null
@@ -72,9 +73,9 @@ interface Site {
   about_team_enabled: boolean
   about_contact_enabled: boolean
   about_values_title: string | null
-  about_values: { title: string; text: string }[] | null
+  about_values: { title: string; text: string; icon: string }[] | null
   about_team_title: string | null
-  about_team_members: { name: string; role: string; image_url: string }[] | null
+  about_team_members: { name: string; role: string; text: string; image_url: string }[] | null
   about_contact_title: string | null
   about_contact_text: string | null
 }
@@ -404,8 +405,52 @@ function ContentTab({ site, prefix, label, introField, pageTitleField, hideSeo, 
 function HomeTab({ site, onPatch, onRefresh }: {
   site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
 }) {
+  const [heroUploading, setHeroUploading] = useState(false)
+  const { showToast } = useToast()
+
+  async function uploadHero(file: File) {
+    setHeroUploading(true)
+    try {
+      const fd = new FormData(); fd.append("file", file); fd.append("prefix", "hero")
+      const res = await fetch("/api/upload-image", { method: "POST", body: fd })
+      const json = await res.json()
+      const url = json.data?.url ?? json.url
+      if (url && await onPatch({ home_hero_image: url })) { showToast("Image uploadée"); void onRefresh() }
+    } catch { showToast("Erreur upload", "error") } finally { setHeroUploading(false) }
+  }
+
   return (
     <div className="space-y-4">
+      {/* Hero image */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-3">
+        <h2 className="font-serif text-lg text-brun">Image principale (hero)</h2>
+        {site.home_hero_image ? (
+          <div className="relative">
+            <div className="w-full h-48 rounded-lg border border-brun/10 overflow-hidden">
+              <img src={site.home_hero_image} alt="Hero" className="w-full h-full object-cover" />
+            </div>
+            <div className="flex gap-2 mt-2">
+              <label className="px-3 py-1.5 text-xs bg-orange text-white rounded-lg hover:bg-orange-light transition-colors cursor-pointer">
+                {heroUploading ? "Upload..." : "Changer l'image"}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadHero(f); e.target.value = "" }} />
+              </label>
+              <button type="button" onClick={async () => { if (await onPatch({ home_hero_image: null })) { showToast("Image supprimée"); void onRefresh() } }}
+                className="px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        ) : (
+          <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-brun/20 rounded-lg cursor-pointer hover:border-orange/40 transition-colors bg-creme/50">
+            <span className="text-brun-light text-sm">{heroUploading ? "Upload en cours..." : "Cliquer pour uploader une image"}</span>
+            <span className="text-[10px] text-brun-light/60 mt-1">Format recommandé : 1920×600 px</span>
+            <input type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadHero(f); e.target.value = "" }} />
+          </label>
+        )}
+      </div>
+
       <ContentTab site={site} prefix="home" label="Accueil" hideSeo onPatch={onPatch} onRefresh={onRefresh} />
 
       {/* Sections de la page d'accueil */}
@@ -472,9 +517,9 @@ function HomeSectionBlock({ site, onPatch, onRefresh, enabledField, titleField, 
           </div>
           <div>
             <label className="text-xs text-brun-light mb-1 block">{subtitleLabel}</label>
-            <input type="text" value={subtitle} onChange={e => setSubtitle(e.target.value)}
+            <textarea value={subtitle} onChange={e => setSubtitle(e.target.value)}
               onBlur={() => saveField(subtitleField, subtitle.trim() || null)}
-              className={INPUT} />
+              rows={4} className={`${INPUT} resize-none`} />
           </div>
         </div>
       )}
@@ -502,14 +547,15 @@ function AboutValuesSection({ site, onPatch, onRefresh }: {
   site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
 }) {
   const [title, setTitle] = useState(site.about_values_title ?? "")
-  const [values, setValues] = useState<{ title: string; text: string }[]>(site.about_values ?? [])
+  const [values, setValues] = useState<{ title: string; text: string; icon: string }[]>(site.about_values ?? [])
+  const [uploading, setUploading] = useState<number | null>(null)
   const { showToast } = useToast()
 
   async function saveField(field: string, value: unknown) {
     if (await onPatch({ [field]: value })) { showToast("Enregistré"); void onRefresh() }
   }
 
-  function updateValue(index: number, key: "title" | "text", val: string) {
+  function updateValue(index: number, key: "title" | "text" | "icon", val: string) {
     const next = [...values]
     next[index] = { ...next[index], [key]: val }
     setValues(next)
@@ -521,7 +567,7 @@ function AboutValuesSection({ site, onPatch, onRefresh }: {
   }
 
   function addValue() {
-    const next = [...values, { title: "", text: "" }]
+    const next = [...values, { title: "", text: "", icon: "" }]
     setValues(next)
   }
 
@@ -555,14 +601,49 @@ function AboutValuesSection({ site, onPatch, onRefresh }: {
           <div className="space-y-3">
             {values.map((v, i) => (
               <div key={i} className="border border-brun/10 rounded-xl p-3 space-y-2">
-                <div className="flex items-center gap-2">
-                  <input type="text" value={v.title} onChange={e => updateValue(i, "title", e.target.value)}
-                    onBlur={() => saveValues()} className={`${INPUT} flex-1`} placeholder="Titre de la valeur" />
-                  <button type="button" onClick={() => removeValue(i)}
-                    className="px-2 py-1 text-red-400 hover:text-red-600 transition-colors text-sm">✕</button>
+                <div className="flex gap-3 items-start">
+                  {/* Picto */}
+                  <div className="flex-shrink-0">
+                    {v.icon ? (
+                      <div className="w-14 h-14 rounded-lg border border-brun/10 overflow-hidden bg-creme">
+                        <img src={v.icon} alt="" className="w-full h-full object-contain"
+                          onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg border border-dashed border-brun/20 flex items-center justify-center bg-creme">
+                        <span className="text-lg text-brun-light/40">✦</span>
+                      </div>
+                    )}
+                    <label className="mt-1 block text-center">
+                      <span className="text-[10px] text-orange cursor-pointer hover:text-orange-light">
+                        {uploading === i ? "..." : "Picto"}
+                      </span>
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={async e => {
+                          const file = e.target.files?.[0]; if (!file) return
+                          setUploading(i)
+                          try {
+                            const fd = new FormData(); fd.append("file", file); fd.append("prefix", "valeurs")
+                            const res = await fetch("/api/upload-image", { method: "POST", body: fd })
+                            const json = await res.json()
+                            const url = json.data?.url ?? json.url
+                            if (url) { updateValue(i, "icon", url); const next = [...values]; next[i] = { ...next[i], icon: url }; await saveValues(next); showToast("Picto uploadé") }
+                          } catch { showToast("Erreur upload", "error") } finally { setUploading(null); e.target.value = "" }
+                        }} />
+                    </label>
+                  </div>
+                  {/* Content */}
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input type="text" value={v.title} onChange={e => updateValue(i, "title", e.target.value)}
+                        onBlur={() => saveValues()} className={`${INPUT} flex-1`} placeholder="Titre de la valeur" />
+                      <button type="button" onClick={() => removeValue(i)}
+                        className="px-2 py-1 text-red-400 hover:text-red-600 transition-colors text-sm">✕</button>
+                    </div>
+                    <textarea value={v.text} onChange={e => updateValue(i, "text", e.target.value)}
+                      onBlur={() => saveValues()} rows={4} className={`${INPUT} resize-none`} placeholder="Description de la valeur" />
+                  </div>
                 </div>
-                <textarea value={v.text} onChange={e => updateValue(i, "text", e.target.value)}
-                  onBlur={() => saveValues()} rows={2} className={`${INPUT} resize-none`} placeholder="Description de la valeur" />
               </div>
             ))}
           </div>
@@ -581,7 +662,7 @@ function AboutTeamSection({ site, onPatch, onRefresh }: {
   site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
 }) {
   const [title, setTitle] = useState(site.about_team_title ?? "")
-  const [members, setMembers] = useState<{ name: string; role: string; image_url: string }[]>(site.about_team_members ?? [])
+  const [members, setMembers] = useState<{ name: string; role: string; text: string; image_url: string }[]>(site.about_team_members ?? [])
   const [uploading, setUploading] = useState<number | null>(null)
   const { showToast } = useToast()
 
@@ -589,7 +670,7 @@ function AboutTeamSection({ site, onPatch, onRefresh }: {
     if (await onPatch({ [field]: value })) { showToast("Enregistré"); void onRefresh() }
   }
 
-  function updateMember(index: number, key: "name" | "role" | "image_url", val: string) {
+  function updateMember(index: number, key: "name" | "role" | "text" | "image_url", val: string) {
     const next = [...members]
     next[index] = { ...next[index], [key]: val }
     setMembers(next)
@@ -601,7 +682,7 @@ function AboutTeamSection({ site, onPatch, onRefresh }: {
   }
 
   function addMember() {
-    const next = [...members, { name: "", role: "", image_url: "" }]
+    const next = [...members, { name: "", role: "", text: "", image_url: "" }]
     setMembers(next)
   }
 
@@ -688,6 +769,8 @@ function AboutTeamSection({ site, onPatch, onRefresh }: {
                         <input type="text" value={m.role} onChange={e => updateMember(i, "role", e.target.value)}
                           onBlur={() => saveMembers()} className={INPUT} placeholder="Rôle / Fonction" />
                       </div>
+                      <textarea value={m.text ?? ""} onChange={e => updateMember(i, "text", e.target.value)}
+                        onBlur={() => saveMembers()} rows={4} className={`${INPUT} resize-none`} placeholder="Description / Bio" />
                     </div>
                   </div>
                   <button type="button" onClick={() => removeMember(i)}
