@@ -42,6 +42,7 @@ interface Site {
   events_seo_title: string | null
   events_seo_desc: string | null
   events_seo_image: string | null
+  about_header_image: string | null
   about_text: string | null
   about_seo_title: string | null
   about_seo_desc: string | null
@@ -540,8 +541,52 @@ function HomeSectionBlock({ site, onPatch, onRefresh, enabledField, titleField, 
 function AboutTab({ site, onPatch, onRefresh }: {
   site: Site; onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
 }) {
+  const [headerUploading, setHeaderUploading] = useState(false)
+  const { showToast } = useToast()
+
+  async function uploadHeader(file: File) {
+    setHeaderUploading(true)
+    try {
+      const fd = new FormData(); fd.append("file", file); fd.append("prefix", "hero")
+      const res = await fetch("/api/upload-image", { method: "POST", body: fd })
+      const json = await res.json()
+      const url = json.data?.url ?? json.url
+      if (url && await onPatch({ about_header_image: url })) { showToast("Image uploadée"); void onRefresh() }
+    } catch { showToast("Erreur upload", "error") } finally { setHeaderUploading(false) }
+  }
+
   return (
     <div className="space-y-4">
+      {/* Image header */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-3">
+        <h2 className="font-serif text-lg text-brun">Image d&apos;en-tête</h2>
+        {resolveImg(site.about_header_image) ? (
+          <div className="relative">
+            <div className="w-full h-48 rounded-lg border border-brun/10 overflow-hidden">
+              <img src={resolveImg(site.about_header_image)} alt="Header" className="w-full h-full object-cover" />
+            </div>
+            <div className="flex gap-2 mt-2">
+              <label className="px-3 py-1.5 text-xs bg-orange text-white rounded-lg hover:bg-orange-light transition-colors cursor-pointer">
+                {headerUploading ? "Upload..." : "Changer l'image"}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadHeader(f); e.target.value = "" }} />
+              </label>
+              <button type="button" onClick={async () => { if (await onPatch({ about_header_image: null })) { showToast("Image supprimée"); void onRefresh() } }}
+                className="px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        ) : (
+          <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-brun/20 rounded-lg cursor-pointer hover:border-orange/40 transition-colors bg-creme/50">
+            <span className="text-brun-light text-sm">{headerUploading ? "Upload en cours..." : "Cliquer pour uploader une image"}</span>
+            <span className="text-[10px] text-brun-light/60 mt-1">Image affichée en haut de la page À propos</span>
+            <input type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadHeader(f); e.target.value = "" }} />
+          </label>
+        )}
+      </div>
+
       <ContentTab site={site} prefix="about" label="À propos" introField="about_text" pageTitleField="about_page_title" hideSeo onPatch={onPatch} onRefresh={onRefresh} />
       <AboutValuesSection site={site} onPatch={onPatch} onRefresh={onRefresh} />
       <AboutTeamSection site={site} onPatch={onPatch} onRefresh={onRefresh} />
