@@ -93,6 +93,7 @@ interface Event {
   guest_count: number
   presentation_text: string | null
   report_text: string | null
+  report_title: string | null
   notes: string | null
   seo_title: string | null
   seo_desc: string | null
@@ -1760,6 +1761,7 @@ function ReportSection({
 }) {
   const { showToast } = useToast()
   const [reportText, setReportText] = useState(event.report_text ?? "")
+  const [reportTitle, setReportTitle] = useState(event.report_title ?? "")
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -1775,6 +1777,11 @@ function ReportSection({
     if (html !== (event.report_text ?? "")) {
       if (await onPatch({ report_text: html || null })) void onRefresh()
     }
+  }
+
+  async function saveReportTitle() {
+    if (reportTitle.trim() === (event.report_title ?? "")) return
+    if (await onPatch({ report_title: reportTitle.trim() || null })) void onRefresh()
   }
 
   // ---- Image helpers (preserving cover images in all operations) ----
@@ -1869,6 +1876,16 @@ function ReportSection({
           value={reportText}
           onChange={(html) => { setReportText(html); saveReportText(html) }}
         />
+      </div>
+
+      {/* Report images title */}
+      <div>
+        <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-2 block">Titre du mur d&apos;images</label>
+        <input type="text" value={reportTitle}
+          onChange={e => setReportTitle(e.target.value)}
+          onBlur={saveReportTitle}
+          className="w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30"
+          placeholder="Ex: Retour en images, Galerie photos..." />
       </div>
 
       {/* Report images — drag & drop zone */}
