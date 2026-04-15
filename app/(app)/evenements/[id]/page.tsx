@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
 import ConfirmDialog from "@/components/ConfirmDialog"
+import SeoBlock from "@/components/SeoBlock"
 import { generateShoppingListPdf } from "@/components/EventShoppingListPdf"
 import { formatIngredientNatural } from "@/lib/format-ingredient"
 
@@ -85,6 +86,9 @@ interface Event {
   presentation_text: string | null
   report_text: string | null
   notes: string | null
+  seo_title: string | null
+  seo_desc: string | null
+  seo_image: string | null
   team_id: string | null
   team: TeamRef | null
   status: string
@@ -334,6 +338,15 @@ export default function EventEditPage() {
           onRefresh={loadEvent}
         />
       )}
+
+      {/* SEO & Partage */}
+      <SeoBlock
+        seoTitle={event.seo_title}
+        seoDesc={event.seo_desc}
+        seoImage={event.seo_image}
+        onPatch={patchEvent}
+        onRefresh={loadEvent}
+      />
 
       {/* Danger zone — always visible below tab content */}
       <div className="bg-white rounded-2xl p-6 border border-rose/20">

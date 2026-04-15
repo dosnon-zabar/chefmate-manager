@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
+import SeoBlock from "@/components/SeoBlock"
 import { SortableTree, buildTreeFromFlat } from "@/components/SortableTree"
 import ConfirmDialog from "@/components/ConfirmDialog"
 import HelpBubble from "@/components/HelpBubble"
@@ -77,6 +78,9 @@ interface Recipe {
   price_range: number | null
   difficulty: number | null
   presentation: string | null
+  seo_title: string | null
+  seo_desc: string | null
+  seo_image: string | null
   images: ImageObj[]
   portion_type_id: string | null
   portion_type: { id: string; name: string } | null
@@ -287,6 +291,15 @@ export default function RecipeEditPage() {
       {/* Section 4: Étapes */}
       <StepSection
         recipe={recipe}
+        onPatch={patchRecipe}
+        onRefresh={loadRecipe}
+      />
+
+      {/* SEO & Partage */}
+      <SeoBlock
+        seoTitle={recipe.seo_title}
+        seoDesc={recipe.seo_desc}
+        seoImage={recipe.seo_image}
         onPatch={patchRecipe}
         onRefresh={loadRecipe}
       />

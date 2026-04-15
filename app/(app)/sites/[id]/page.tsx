@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
+import SeoBlock from "@/components/SeoBlock"
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
   ssr: false,
@@ -315,53 +316,35 @@ function SocialField({ field, site, onPatch, onRefresh }: {
 
 // ---- CONTENT TAB (reusable for accueil, recettes, events, about) ----
 
-function SeoCard({ site, prefix, label, onPatch, onRefresh }: {
-  site: Site; prefix: string; label: string
+function SeoCard({ site, prefix, onPatch, onRefresh }: {
+  site: Site; prefix: string; label?: string
   onPatch: (b: Record<string, unknown>) => Promise<boolean>; onRefresh: () => Promise<void>
 }) {
   const seoTitleKey = `${prefix}_seo_title`
   const seoDescKey = `${prefix}_seo_desc`
   const seoImageKey = `${prefix}_seo_image`
   const s = site as unknown as Record<string, unknown>
-  const [seoTitle, setSeoTitle] = useState((s[seoTitleKey] as string) ?? "")
-  const [seoDesc, setSeoDesc] = useState((s[seoDescKey] as string) ?? "")
-  const [seoImage, setSeoImage] = useState((s[seoImageKey] as string) ?? "")
-  const { showToast } = useToast()
 
-  async function saveField(field: string, value: unknown) {
-    if (await onPatch({ [field]: value })) { showToast("Enregistré"); void onRefresh() }
+  async function patchWrapper(body: Record<string, unknown>): Promise<boolean> {
+    // Remap flat field names (seo_title → prefix_seo_title)
+    const remapped: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(body)) {
+      if (k === "seo_title") remapped[seoTitleKey] = v
+      else if (k === "seo_desc") remapped[seoDescKey] = v
+      else if (k === "seo_image") remapped[seoImageKey] = v
+      else remapped[k] = v
+    }
+    return onPatch(remapped)
   }
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
-      <h2 className="font-serif text-lg text-brun">SEO — {label}</h2>
-      <div>
-        <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Titre SEO</label>
-        <input type="text" value={seoTitle} onChange={e => setSeoTitle(e.target.value)}
-          onBlur={() => saveField(seoTitleKey, seoTitle.trim() || null)}
-          className={INPUT} placeholder="Titre pour les moteurs de recherche" />
-        <p className="text-[10px] text-brun-light mt-1">{seoTitle.length}/60 caractères recommandés</p>
-      </div>
-      <div>
-        <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Description SEO</label>
-        <textarea value={seoDesc} onChange={e => setSeoDesc(e.target.value)}
-          onBlur={() => saveField(seoDescKey, seoDesc.trim() || null)}
-          rows={3} className={`${INPUT} resize-none`} placeholder="Description pour les moteurs de recherche" />
-        <p className="text-[10px] text-brun-light mt-1">{seoDesc.length}/160 caractères recommandés</p>
-      </div>
-      <div>
-        <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Image OG (Open Graph)</label>
-        <input type="text" value={seoImage} onChange={e => setSeoImage(e.target.value)}
-          onBlur={() => saveField(seoImageKey, seoImage.trim() || null)}
-          className={INPUT} placeholder="URL de l'image de partage" />
-        {seoImage && (
-          <div className="mt-2 w-48 h-24 rounded-lg border border-brun/10 overflow-hidden">
-            <img src={seoImage} alt="OG preview" className="w-full h-full object-cover"
-              onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-          </div>
-        )}
-      </div>
-    </div>
+    <SeoBlock
+      seoTitle={(s[seoTitleKey] as string) ?? null}
+      seoDesc={(s[seoDescKey] as string) ?? null}
+      seoImage={(s[seoImageKey] as string) ?? null}
+      onPatch={patchWrapper}
+      onRefresh={onRefresh}
+    />
   )
 }
 
