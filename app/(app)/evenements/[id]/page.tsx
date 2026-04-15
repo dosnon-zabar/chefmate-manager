@@ -76,6 +76,14 @@ interface EventTestimonial {
   sort_order: number
 }
 
+interface EventStep {
+  id: string
+  title: string | null
+  text: string | null
+  image_url: string | null
+  sort_order: number
+}
+
 interface Event {
   id: string
   name: string
@@ -89,6 +97,8 @@ interface Event {
   seo_title: string | null
   seo_desc: string | null
   seo_image: string | null
+  steps_title: string | null
+  steps_text: string | null
   team_id: string | null
   team: TeamRef | null
   status: string
@@ -96,6 +106,7 @@ interface Event {
   event_ingredients: EventIngredient[]
   event_images: EventImage[]
   event_testimonials: EventTestimonial[]
+  event_steps: EventStep[]
   event_dates: EventDate[]
   created_at: string
   updated_at: string
@@ -152,7 +163,7 @@ export default function EventEditPage() {
   const [catalogIngredients, setCatalogIngredients] = useState<CatalogIngredient[]>([])
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<"infos" | "recettes" | "organisation" | "compte-rendu" | "temoignages">("infos")
+  const [activeTab, setActiveTab] = useState<"infos" | "recettes" | "organisation" | "compte-rendu" | "parcours" | "temoignages">("infos")
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -258,6 +269,7 @@ export default function EventEditPage() {
     { key: "recettes" as const, label: "Recettes & Ingrédients" },
     { key: "organisation" as const, label: "Liste des ingrédients" },
     { key: "compte-rendu" as const, label: "Compte rendu" },
+    { key: "parcours" as const, label: "Parcours" },
     { key: "temoignages" as const, label: "Témoignages" },
   ]
 
@@ -325,6 +337,14 @@ export default function EventEditPage() {
 
       {activeTab === "compte-rendu" && (
         <ReportSection
+          event={event}
+          onPatch={patchEvent}
+          onRefresh={loadEvent}
+        />
+      )}
+
+      {activeTab === "parcours" && (
+        <StepsSection
           event={event}
           onPatch={patchEvent}
           onRefresh={loadEvent}
@@ -2058,6 +2078,204 @@ function TestimonialsSection({
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
+// SECTION 6: PARCOURS
+// =====================================================================
+
+function StepsSection({
+  event,
+  onPatch,
+  onRefresh,
+}: {
+  event: Event
+  onPatch: (body: Record<string, unknown>) => Promise<boolean>
+  onRefresh: () => Promise<void>
+}) {
+  const { showToast } = useToast()
+  const adminBase = getAdminBase()
+  const [stepsTitle, setStepsTitle] = useState(event.steps_title ?? "")
+  const [stepsText, setStepsText] = useState(event.steps_text ?? "")
+  const [steps, setSteps] = useState(event.event_steps ?? [])
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null)
+
+  useEffect(() => { setSteps(event.event_steps ?? []) }, [event.event_steps])
+  useEffect(() => { setStepsTitle(event.steps_title ?? "") }, [event.steps_title])
+  useEffect(() => { setStepsText(event.steps_text ?? "") }, [event.steps_text])
+
+  async function saveStepsTitle() {
+    if (stepsTitle.trim() === (event.steps_title ?? "")) return
+    if (await onPatch({ steps_title: stepsTitle.trim() || null })) {
+      showToast("Titre enregistré")
+      void onRefresh()
+    }
+  }
+
+  async function saveStepsText(html: string) {
+    setStepsText(html)
+    if (await onPatch({ steps_text: html || null })) void onRefresh()
+  }
+
+  function addStep() {
+    setSteps([...steps, {
+      id: `temp-${Date.now()}`,
+      title: null,
+      text: null,
+      image_url: null,
+      sort_order: steps.length,
+    }])
+  }
+
+  function updateStep(index: number, field: "title" | "text" | "image_url", value: string | null) {
+    setSteps(steps.map((s, i) => i === index ? { ...s, [field]: value } : s))
+  }
+
+  function removeStep(index: number) {
+    setSteps(steps.filter((_, i) => i !== index))
+  }
+
+  function moveStep(index: number, direction: -1 | 1) {
+    const next = [...steps]
+    const target = index + direction
+    if (target < 0 || target >= next.length) return
+    ;[next[index], next[target]] = [next[target], next[index]]
+    setSteps(next)
+  }
+
+  async function saveSteps(nextSteps?: typeof steps) {
+    const current = nextSteps ?? steps
+    const payload = current.map((s, i) => ({
+      title: s.title?.trim() || null,
+      text: s.text?.trim() || null,
+      image_url: s.image_url || null,
+      sort_order: i,
+    }))
+    if (await onPatch({ steps: payload })) {
+      showToast("Parcours enregistré")
+      void onRefresh()
+    }
+  }
+
+  async function uploadStepImage(index: number, file: File) {
+    setUploadingIdx(index)
+    try {
+      const fd = new FormData(); fd.append("file", file); fd.append("prefix", "events")
+      const res = await fetch("/api/upload-image", { method: "POST", body: fd })
+      const json = await res.json()
+      const url = json.data?.url ?? json.url
+      if (url) {
+        const next = steps.map((s, i) => i === index ? { ...s, image_url: url } : s)
+        setSteps(next)
+        await saveSteps(next)
+      }
+    } catch { showToast("Erreur upload", "error") } finally { setUploadingIdx(null) }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Section title + text */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+        <h2 className="font-serif text-lg text-brun">Section Parcours</h2>
+        <div>
+          <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Titre de la section</label>
+          <input type="text" value={stepsTitle} onChange={e => setStepsTitle(e.target.value)}
+            onBlur={saveStepsTitle}
+            className="w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30"
+            placeholder="Ex: Notre parcours, Le menu, Les étapes..." />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-brun-light uppercase tracking-wide mb-1 block">Texte d&apos;introduction</label>
+          <RichTextEditor value={stepsText} onChange={saveStepsText} />
+        </div>
+      </div>
+
+      {/* Steps */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-serif text-lg text-brun">Étapes du parcours</h2>
+          <div className="flex gap-2">
+            <button type="button" onClick={addStep}
+              className="text-xs text-orange hover:text-orange-light transition-colors">
+              + Ajouter
+            </button>
+            {steps.length > 0 && (
+              <button type="button" onClick={() => saveSteps()}
+                className="text-xs px-2 py-0.5 bg-orange text-white rounded hover:bg-orange-light transition-colors">
+                Enregistrer
+              </button>
+            )}
+          </div>
+        </div>
+
+        {steps.length === 0 && (
+          <p className="text-xs text-brun-light italic">Aucune étape</p>
+        )}
+
+        <div className="space-y-4">
+          {steps.map((s, i) => {
+            const imgSrc = s.image_url
+              ? (s.image_url.startsWith("http") ? s.image_url : `${adminBase}${s.image_url}`)
+              : null
+            return (
+              <div key={s.id} className="border border-brun/10 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-brun">Étape {i + 1}</span>
+                  <div className="flex gap-2 items-center">
+                    <button type="button" onClick={() => moveStep(i, -1)} disabled={i === 0}
+                      className="text-xs text-brun-light hover:text-brun disabled:opacity-30 transition-colors" aria-label="Monter">↑</button>
+                    <button type="button" onClick={() => moveStep(i, 1)} disabled={i === steps.length - 1}
+                      className="text-xs text-brun-light hover:text-brun disabled:opacity-30 transition-colors" aria-label="Descendre">↓</button>
+                    <button type="button" onClick={() => removeStep(i)}
+                      className="text-xs text-rose hover:text-rose/80 transition-colors">Supprimer</button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                  {/* Image */}
+                  <div className="flex-shrink-0">
+                    {imgSrc ? (
+                      <div className="relative w-32 h-24 rounded-lg overflow-hidden border border-brun/10 bg-creme">
+                        <img src={imgSrc} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-32 h-24 rounded-lg border border-dashed border-brun/20 flex items-center justify-center bg-creme">
+                        <span className="text-xs text-brun-light/40">Image</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-1 justify-center">
+                      <label className="text-[10px] text-orange cursor-pointer hover:text-orange-light">
+                        {uploadingIdx === i ? "..." : (imgSrc ? "Changer" : "Uploader")}
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadStepImage(i, f); e.target.value = "" }} />
+                      </label>
+                      {imgSrc && (
+                        <button type="button" onClick={() => { const next = steps.map((st, idx) => idx === i ? { ...st, image_url: null } : st); setSteps(next); void saveSteps(next) }}
+                          className="text-[10px] text-red-400 hover:text-red-600">Retirer</button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Contenu */}
+                  <div className="flex-1 space-y-2">
+                    <input type="text" value={s.title ?? ""}
+                      onChange={(e) => updateStep(i, "title", e.target.value || null)}
+                      className="w-full px-2 py-1.5 rounded border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30"
+                      placeholder="Titre de l'étape (optionnel)" />
+                    <textarea value={s.text ?? ""}
+                      onChange={(e) => updateStep(i, "text", e.target.value || null)}
+                      rows={3}
+                      className="w-full px-2 py-1.5 rounded border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30 resize-none"
+                      placeholder="Texte de l'étape (optionnel)" />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
