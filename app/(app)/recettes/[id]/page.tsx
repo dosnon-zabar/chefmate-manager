@@ -783,6 +783,7 @@ function ImageSection({
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [dropTarget, setDropTarget] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const adminBase = getAdminBase()
 
@@ -832,9 +833,13 @@ function ImageSection({
     if (fromIdx === toIdx) return
     const next = [...images]
     const [moved] = next.splice(fromIdx, 1)
-    next.splice(toIdx, 0, moved)
+    const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx
+    next.splice(insertAt, 0, moved)
     const reordered = next.map((img, idx) => ({ ...img, ordre: idx }))
-    if (await onPatch({ images: reordered })) void onRefresh()
+    if (await onPatch({ images: reordered })) {
+      showToast("Ordre mis à jour")
+      void onRefresh()
+    }
   }
 
   function handleDragOver(e: React.DragEvent) {
@@ -864,31 +869,47 @@ function ImageSection({
         <span className="text-[10px] text-brun-light">{images.length > 1 ? "Glisser pour réordonner" : ""}</span>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex flex-wrap items-start">
         {images.map((img, idx) => {
           const url = img.url.startsWith("http") ? img.url : `${adminBase}${img.url}`
           return (
-            <div
-              key={img.id}
-              draggable
-              onDragStart={() => setDragIdx(idx)}
-              onDragEnd={() => setDragIdx(null)}
-              onDragOver={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== idx) moveImage(dragIdx, idx); setDragIdx(idx) }}
-              className={`relative w-32 h-24 rounded-lg overflow-hidden border group cursor-grab active:cursor-grabbing transition-all ${
-                dragIdx === idx ? "border-orange scale-105 shadow-lg" : "border-brun/10"
-              } ${idx === 0 ? "ring-2 ring-vert-eau/40" : ""}`}
-            >
-              <img src={url} alt={img.nom} className="w-full h-full object-cover" />
-              {idx === 0 && (
-                <span className="absolute bottom-1 left-1 text-[8px] bg-vert-eau text-white px-1 py-0.5 rounded">Principale</span>
-              )}
-              <button
-                type="button"
-                onClick={() => removeImage(img.id)}
-                className="absolute top-1 right-1 w-5 h-5 bg-rose text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+            <div key={img.id} className="flex items-center">
+              {/* Drop indicator before this image */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (dragIdx !== null && dragIdx !== idx) setDropTarget(idx) }}
+                onDragLeave={() => { if (dropTarget === idx) setDropTarget(null) }}
+                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (dragIdx !== null && dragIdx !== idx) { void moveImage(dragIdx, idx) } setDragIdx(null); setDropTarget(null) }}
+                className={`h-24 transition-all duration-200 ${dropTarget === idx && dragIdx !== null ? "w-4 bg-orange/30 rounded mx-1" : "w-1.5"}`}
+              />
+              <div
+                draggable
+                onDragStart={() => setDragIdx(idx)}
+                onDragEnd={() => { setDragIdx(null); setDropTarget(null) }}
+                className={`relative w-32 h-24 rounded-lg overflow-hidden border group cursor-grab active:cursor-grabbing transition-all ${
+                  dragIdx === idx ? "opacity-40 scale-95" : "opacity-100"
+                } ${idx === 0 ? "ring-2 ring-vert-eau/40" : "border-brun/10"}`}
               >
-                ✕
-              </button>
+                <img src={url} alt={img.nom} className="w-full h-full object-cover" />
+                {idx === 0 && (
+                  <span className="absolute bottom-1 left-1 text-[8px] bg-vert-eau text-white px-1 py-0.5 rounded">Principale</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeImage(img.id)}
+                  className="absolute top-1 right-1 w-5 h-5 bg-rose text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ✕
+                </button>
+              </div>
+              {/* Drop indicator after last image */}
+              {idx === images.length - 1 && (
+                <div
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (dragIdx !== null && dragIdx !== idx) setDropTarget(images.length) }}
+                  onDragLeave={() => { if (dropTarget === images.length) setDropTarget(null) }}
+                  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (dragIdx !== null) { void moveImage(dragIdx, images.length - 1) } setDragIdx(null); setDropTarget(null) }}
+                  className={`h-24 transition-all duration-200 ${dropTarget === images.length && dragIdx !== null ? "w-4 bg-orange/30 rounded mx-1" : "w-1.5"}`}
+                />
+              )}
             </div>
           )
         })}
