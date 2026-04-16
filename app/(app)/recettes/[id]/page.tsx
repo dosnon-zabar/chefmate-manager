@@ -781,33 +781,35 @@ function ImageSection({
 }) {
   const { showToast } = useToast()
   const [uploading, setUploading] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const adminBase = getAdminBase()
 
   const images = Array.isArray(recipe.images) ? recipe.images : []
 
-  async function handleUpload(file: File) {
+  async function handleUploadMulti(files: File[]) {
+    if (files.length === 0) return
     setUploading(true)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("prefix", "recipes")
-      const res = await fetch("/api/upload-image", {
-        method: "POST",
-        body: formData,
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || "Erreur upload")
-
-      const newImage: ImageObj = {
-        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        nom: file.name,
-        url: json.url,
-        ordre: images.length,
-        taille: file.size,
+      const newImages: ImageObj[] = []
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("prefix", "recipes")
+        const res = await fetch("/api/upload-image", { method: "POST", body: formData })
+        const json = await res.json()
+        if (!res.ok) continue
+        newImages.push({
+          id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          nom: file.name,
+          url: json.url,
+          ordre: images.length + newImages.length,
+          taille: file.size,
+        })
       }
-      if (await onPatch({ images: [...images, newImage] })) {
-        showToast("Image ajoutée")
+      if (newImages.length > 0 && await onPatch({ images: [...images, ...newImages] })) {
+        showToast(`${newImages.length} image${newImages.length > 1 ? "s" : ""} ajoutée${newImages.length > 1 ? "s" : ""}`)
         void onRefresh()
       }
     } catch (e) {
@@ -819,61 +821,107 @@ function ImageSection({
   }
 
   async function removeImage(imgId: string) {
-    const next = images.filter((i) => i.id !== imgId)
+    const next = images.filter((i) => i.id !== imgId).map((img, idx) => ({ ...img, ordre: idx }))
     if (await onPatch({ images: next })) {
       showToast("Image retirée")
       void onRefresh()
     }
   }
 
+  async function moveImage(fromIdx: number, toIdx: number) {
+    if (fromIdx === toIdx) return
+    const next = [...images]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    const reordered = next.map((img, idx) => ({ ...img, ordre: idx }))
+    if (await onPatch({ images: reordered })) void onRefresh()
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    // Si on drag une image interne, on ne montre pas la zone de drop fichier
+    if (dragIdx !== null) return
+    setDragging(true)
+  }
+  function handleDragLeave() { setDragging(false) }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(false)
+    if (dragIdx !== null) return // géré par le drop sur les images
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"))
+    if (files.length > 0) void handleUploadMulti(files)
+  }
+
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm">
-      <h2 className="font-serif text-lg text-brun mb-4">Images</h2>
+    <div
+      className={`bg-white rounded-2xl p-6 shadow-sm transition-colors ${dragging ? "ring-2 ring-orange/40 bg-orange/5" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-serif text-lg text-brun">Images</h2>
+        <span className="text-[10px] text-brun-light">{images.length > 1 ? "Glisser pour réordonner" : ""}</span>
+      </div>
 
       <div className="flex gap-3 flex-wrap">
-        {images.map((img) => (
-          <div
-            key={img.id}
-            className="relative w-32 h-24 rounded-lg overflow-hidden border border-brun/10 group"
-          >
-            <img
-              src={`${adminBase}${img.url}`}
-              alt={img.nom}
-              className="w-full h-full object-cover"
-            />
-            <button
-              type="button"
-              onClick={() => removeImage(img.id)}
-              className="absolute top-1 right-1 w-5 h-5 bg-rose text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+        {images.map((img, idx) => {
+          const url = img.url.startsWith("http") ? img.url : `${adminBase}${img.url}`
+          return (
+            <div
+              key={img.id}
+              draggable
+              onDragStart={() => setDragIdx(idx)}
+              onDragEnd={() => setDragIdx(null)}
+              onDragOver={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== idx) moveImage(dragIdx, idx); setDragIdx(idx) }}
+              className={`relative w-32 h-24 rounded-lg overflow-hidden border group cursor-grab active:cursor-grabbing transition-all ${
+                dragIdx === idx ? "border-orange scale-105 shadow-lg" : "border-brun/10"
+              } ${idx === 0 ? "ring-2 ring-vert-eau/40" : ""}`}
             >
-              ✕
-            </button>
-          </div>
-        ))}
+              <img src={url} alt={img.nom} className="w-full h-full object-cover" />
+              {idx === 0 && (
+                <span className="absolute bottom-1 left-1 text-[8px] bg-vert-eau text-white px-1 py-0.5 rounded">Principale</span>
+              )}
+              <button
+                type="button"
+                onClick={() => removeImage(img.id)}
+                className="absolute top-1 right-1 w-5 h-5 bg-rose text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                ✕
+              </button>
+            </div>
+          )
+        })}
 
-        {/* Upload button */}
-        {images.length < 5 && (
-          <label className="w-32 h-24 rounded-lg border-2 border-dashed border-brun/20 flex items-center justify-center cursor-pointer hover:border-orange/40 transition-colors">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) void handleUpload(f)
-              }}
-            />
-            {uploading ? (
-              <span className="text-xs text-brun-light">Upload...</span>
-            ) : (
+        {/* Upload zone */}
+        <label className="w-32 h-24 rounded-lg border-2 border-dashed border-brun/20 flex flex-col items-center justify-center cursor-pointer hover:border-orange/40 transition-colors">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? [])
+              if (files.length > 0) void handleUploadMulti(files)
+            }}
+          />
+          {uploading ? (
+            <span className="text-xs text-brun-light">Upload...</span>
+          ) : (
+            <>
               <svg className="w-6 h-6 text-brun-light/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
-            )}
-          </label>
-        )}
+              <span className="text-[9px] text-brun-light/40 mt-1">Multi-images</span>
+            </>
+          )}
+        </label>
       </div>
+
+      {dragging && dragIdx === null && (
+        <p className="text-center text-xs text-orange mt-3 animate-pulse">Déposer les images ici</p>
+      )}
     </div>
   )
 }
