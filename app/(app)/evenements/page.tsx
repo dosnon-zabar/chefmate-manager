@@ -128,9 +128,31 @@ export default function EvenementsPage() {
   }, [loadEvents])
 
   // Client-side name filter (API doesn't support name search on events)
-  const filteredEvents = searchName.trim()
+  const filteredEventsRaw = searchName.trim()
     ? events.filter((e) => e.name.toLowerCase().includes(searchName.trim().toLowerCase()))
     : events
+
+  // Re-sort by computed "effective date" (first event_dates[].start_datetime,
+  // fallback to event_date). The API-level sort doesn't work for events that
+  // only use event_dates and have null event_date.
+  function getEffectiveDate(e: typeof events[0]): string {
+    const first = (e.event_dates ?? [])
+      .filter((d) => d.start_datetime)
+      .sort((a, b) => a.start_datetime.localeCompare(b.start_datetime))[0]
+    return first?.start_datetime || e.event_date || ""
+  }
+
+  const filteredEvents = sortBy === "event_date"
+    ? [...filteredEventsRaw].sort((a, b) => {
+        const da = getEffectiveDate(a)
+        const db = getEffectiveDate(b)
+        // Empty dates go last regardless of order
+        if (!da && !db) return 0
+        if (!da) return 1
+        if (!db) return -1
+        return sortOrder === "asc" ? da.localeCompare(db) : db.localeCompare(da)
+      })
+    : filteredEventsRaw
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
