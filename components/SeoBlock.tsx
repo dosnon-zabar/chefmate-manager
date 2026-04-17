@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useToast } from "@/components/Toaster"
+import { getAdminBase } from "@/lib/admin-url"
 
 const INPUT = "w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30"
 
@@ -72,9 +73,7 @@ export default function SeoBlock({ seoTitle, seoDesc, seoImage, onPatch, onRefre
 
   function resolveImg(url: string): string {
     if (!url || url.startsWith("http")) return url
-    const base = typeof window !== "undefined" && window.location.hostname !== "localhost"
-      ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
-    return `${base}${url}`
+    return `${getAdminBase()}${url}`
   }
 
   return (

@@ -9,6 +9,7 @@ import SiteFormPanel, {
   type SiteRow,
 } from "@/components/SiteFormPanel"
 import ConfirmDialog from "@/components/ConfirmDialog"
+import { getAdminBase } from "@/lib/admin-url"
 
 const STATUS_LABEL: Record<SiteLifecycleStatus, string> = {
   active: "Actif",
@@ -249,7 +250,7 @@ export default function SitesPage() {
                 const heroUrl = site.home_hero_image
                   ? site.home_hero_image.startsWith("http")
                     ? site.home_hero_image
-                    : `${typeof window !== "undefined" && window.location.hostname !== "localhost" ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"}${site.home_hero_image}`
+                    : `${getAdminBase()}${site.home_hero_image}`
                   : null
                 return heroUrl ? (
                   <div className="h-28 overflow-hidden">

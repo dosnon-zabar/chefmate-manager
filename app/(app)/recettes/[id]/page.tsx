@@ -93,16 +93,10 @@ interface Recipe {
 }
 
 import { formatIngredientNatural } from "@/lib/format-ingredient"
+import { getAdminBase } from "@/lib/admin-url"
 
 const INPUT_CLASS =
   "w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-sm text-brun focus:outline-none focus:ring-2 focus:ring-orange/30"
-
-function getAdminBase() {
-  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
-    return "https://chefmate-admin.zabar.fr"
-  }
-  return "http://localhost:3000"
-}
 
 // =====================================================================
 // MAIN PAGE
@@ -1200,8 +1194,7 @@ function IngredientSection({
 
                 {/* Ingredient image: uploaded > TheMealDB > empty */}
                 {(() => {
-                  const adminBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
-                    ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+                  const adminBase = getAdminBase()
                   const masterImg = ing.master?.image_url
                   const imgSrc = masterImg
                     ? (masterImg.startsWith("http") ? masterImg : `${adminBase}${masterImg}`)
@@ -1241,8 +1234,7 @@ function IngredientSection({
                           className="w-full text-left px-3 py-1.5 text-xs text-brun hover:bg-creme flex items-center gap-2"
                         >
                           {(() => {
-                            const aBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
-                              ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+                            const aBase = getAdminBase()
                             const iSrc = c.image_url
                               ? (c.image_url.startsWith("http") ? c.image_url : `${aBase}${c.image_url}`)
                               : c.name_en

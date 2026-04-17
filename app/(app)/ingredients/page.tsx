@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
 import SidePanel from "@/components/SidePanel"
 import ConfirmDialog from "@/components/ConfirmDialog"
+import { getAdminBase } from "@/lib/admin-url"
 
 // ----- Types -----
 
@@ -487,8 +488,7 @@ export default function IngredientsPage() {
         className="flex items-center gap-3 py-1.5 px-3 rounded hover:bg-creme/50 group"
       >
         {(() => {
-          const adminBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
-            ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+          const adminBase = getAdminBase()
           const imgSrc = ing.image_url
             ? (ing.image_url.startsWith("http") ? ing.image_url : `${adminBase}${ing.image_url}`)
             : ing.name_en
@@ -846,8 +846,7 @@ export default function IngredientsPage() {
           <div>
             <label className="block text-sm font-medium text-brun mb-2">Image</label>
             {(() => {
-              const adminBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
-                ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
+              const adminBase = getAdminBase()
               const displayUrl = formImageUrl
                 ? (formImageUrl.startsWith("http") ? formImageUrl : `${adminBase}${formImageUrl}`)
                 : formNameEn

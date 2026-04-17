@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
+import { getAdminBase } from "@/lib/admin-url"
 
 interface TeamRef {
   id: string
@@ -35,11 +36,7 @@ function getRecipeImageUrl(images: unknown): string | null {
   if (typeof img === "string") return img
   if (img && typeof img === "object" && "url" in img) {
     const url = (img as { url: string }).url
-    const adminBase =
-      typeof window !== "undefined" && window.location.hostname !== "localhost"
-        ? "https://chefmate-admin.zabar.fr"
-        : "http://localhost:3000"
-    return `${adminBase}${url}`
+    return `${getAdminBase()}${url}`
   }
   return null
 }

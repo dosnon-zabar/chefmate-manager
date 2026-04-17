@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ConfirmDialog"
 import SeoBlock from "@/components/SeoBlock"
 import { generateShoppingListPdf } from "@/components/EventShoppingListPdf"
 import { formatIngredientNatural } from "@/lib/format-ingredient"
+import { getAdminBase } from "@/lib/admin-url"
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
   ssr: false,
@@ -118,13 +119,6 @@ interface RecipeOption {
   name: string
   serving_count: number
   portion_type_name: string | null
-}
-
-function getAdminBase() {
-  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
-    return "https://chefmate-admin.zabar.fr"
-  }
-  return "http://localhost:3000"
 }
 
 function toDatetimeLocal(iso: string): string {

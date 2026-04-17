@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
 import SeoBlock from "@/components/SeoBlock"
+import { getAdminBase } from "@/lib/admin-url"
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
   ssr: false,
@@ -89,9 +90,7 @@ const INPUT = "w-full px-3 py-2 rounded-lg border border-brun/10 bg-creme text-s
 function resolveImg(url?: string | null): string | undefined {
   if (!url) return undefined
   if (url.startsWith("http")) return url
-  const base = typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? "https://chefmate-admin.zabar.fr" : "http://localhost:3000"
-  return `${base}${url}`
+  return `${getAdminBase()}${url}`
 }
 
 export default function SiteEditPage() {

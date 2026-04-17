@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { getAdminBase } from "@/lib/admin-url"
 // Auth context available if needed for permission checks
 // import { useAuth } from "@/lib/auth/auth-context"
 
@@ -80,11 +81,7 @@ function getCoverImageUrl(images: EventImage[]): string | null {
   if (!cover) return null
   const url = cover.image_url
   if (url.startsWith("http")) return url
-  const adminBase =
-    typeof window !== "undefined" && window.location.hostname !== "localhost"
-      ? "https://chefmate-admin.zabar.fr"
-      : "http://localhost:3000"
-  return `${adminBase}${url}`
+  return `${getAdminBase()}${url}`
 }
 
 export default function EvenementsPage() {
