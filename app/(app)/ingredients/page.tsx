@@ -64,7 +64,13 @@ export default function IngredientsPage() {
   // Toggle state for rayon sections
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
 
-  // Form panel
+  // Name prompt (step 1)
+  const [namePromptOpen, setNamePromptOpen] = useState(false)
+  const [promptName, setPromptName] = useState("")
+  const [exactMatch, setExactMatch] = useState<Ingredient | null>(null)
+  const [similarMatches, setSimilarMatches] = useState<Ingredient[]>([])
+
+  // Form panel (step 2)
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null)
   const [formName, setFormName] = useState("")
@@ -190,19 +196,146 @@ export default function IngredientsPage() {
 
   // ----- CRUD -----
 
-  function openCreate(preselectedAisleId?: string) {
+  // Normalize string: lowercase + remove accents + strip punctuation + collapse whitespace
+  function normalize(s: string) {
+    return s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove diacritics
+      .toLowerCase()
+      .replace(/[''`´]/g, "'") // normalize apostrophes
+      .replace(/[^a-z0-9\s]/g, " ") // strip all non-alphanumeric (incl. apostrophes, dashes)
+      .replace(/\s+/g, " ") // collapse whitespace
+      .trim()
+  }
+
+  // Remove trailing plurals (s, x) on each word
+  function singularize(s: string) {
+    return s.split(" ").map(w => w.replace(/[sx]$/i, "")).join(" ")
+  }
+
+  // Token-based similarity: compare each word of input to each word of target
+  // Returns the ratio of input words that have a close match in target
+  function tokenSimilarity(input: string, target: string): number {
+    const inputWords = input.split(" ").filter(w => w.length > 1)
+    const targetWords = target.split(" ").filter(w => w.length > 1)
+    if (inputWords.length === 0 || targetWords.length === 0) return 0
+    let matched = 0
+    for (const iw of inputWords) {
+      const best = Math.max(...targetWords.map(tw => similarity(iw, tw)))
+      if (best >= 0.75) matched++
+    }
+    return matched / Math.max(inputWords.length, targetWords.length)
+  }
+
+  // Levenshtein distance
+  function levenshtein(a: string, b: string): number {
+    if (a === b) return 0
+    if (a.length === 0) return b.length
+    if (b.length === 0) return a.length
+    const matrix: number[][] = []
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i]
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b[i - 1] === a[j - 1]) matrix[i][j] = matrix[i - 1][j - 1]
+        else matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+      }
+    }
+    return matrix[b.length][a.length]
+  }
+
+  // Similarity ratio (0 to 1) based on Levenshtein distance
+  function similarity(a: string, b: string): number {
+    const maxLen = Math.max(a.length, b.length)
+    if (maxLen === 0) return 1
+    return 1 - levenshtein(a, b) / maxLen
+  }
+
+  function findMatches(name: string) {
+    const normalizedInput = normalize(name)
+    const singularInput = singularize(normalizedInput)
+
+    let exact: Ingredient | null = null
+    const similar: Array<{ ing: Ingredient; score: number }> = []
+
+    for (const ing of ingredients) {
+      const n = normalize(ing.name)
+      const s = singularize(n)
+      // Exact match (including plural tolerance)
+      if (n === normalizedInput || s === singularInput) {
+        if (!exact) exact = ing
+        continue
+      }
+      // Similarity ≥ 80% — combine global Levenshtein and token-based similarity
+      const globalScore = Math.max(similarity(n, normalizedInput), similarity(s, singularInput))
+      const tokenScore = Math.max(tokenSimilarity(normalizedInput, n), tokenSimilarity(singularInput, s))
+      const score = Math.max(globalScore, tokenScore)
+      if (score >= 0.8) similar.push({ ing, score })
+    }
+
+    similar.sort((a, b) => b.score - a.score)
+    return { exact, similar: similar.map(s => s.ing).slice(0, 5) }
+  }
+
+  function openNamePrompt(preselectedAisleId?: string) {
+    setPromptName("")
+    setExactMatch(null)
+    setSimilarMatches([])
+    setNamePromptOpen(true)
+    // Store preselected aisle for later
+    setFormDefaultAisleId(preselectedAisleId || "")
+    setFormAisleIds(preselectedAisleId ? new Set([preselectedAisleId]) : new Set())
+  }
+
+  // Live search as user types
+  useEffect(() => {
+    if (!namePromptOpen) return
+    const name = promptName.trim()
+    if (!name) {
+      setExactMatch(null)
+      setSimilarMatches([])
+      return
+    }
+    const { exact, similar } = findMatches(name)
+    setExactMatch(exact)
+    setSimilarMatches(similar)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promptName, namePromptOpen, ingredients])
+
+  function validateNamePrompt() {
+    const name = promptName.trim()
+    if (!name) return
+    if (exactMatch) return // user must click "Modifier" instead
+    // No exact match → open create panel (even if similar matches exist, user may bypass)
+    setNamePromptOpen(false)
+    openCreateWithName(name)
+  }
+
+  function openEditFromPrompt(ing: Ingredient) {
+    setNamePromptOpen(false)
+    setExactMatch(null)
+    setSimilarMatches([])
+    openEdit(ing)
+  }
+
+  function openCreateWithName(name: string, preselectedAisleId?: string) {
     setEditingIngredient(null)
-    setFormName("")
+    setFormName(name)
     setFormNameEn("")
     setFormDescription("")
     setFormDefaultUnitId("")
-    setFormDefaultAisleId(preselectedAisleId || "")
-    setFormAisleIds(preselectedAisleId ? new Set([preselectedAisleId]) : new Set())
+    if (!preselectedAisleId) {
+      // Keep what was set in openNamePrompt
+    } else {
+      setFormDefaultAisleId(preselectedAisleId)
+      setFormAisleIds(new Set([preselectedAisleId]))
+    }
     setFormUnitIds(new Set())
     setFormImageUrl(null)
     setFormError(null)
     setPanelOpen(true)
   }
+
 
   function openEdit(ing: Ingredient) {
     setEditingIngredient(ing)
@@ -479,7 +612,7 @@ export default function IngredientsPage() {
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
-                openCreate(aisle.id)
+                openNamePrompt(aisle.id)
               }}
               className="px-2 py-0.5 text-[10px] font-medium rounded bg-orange/10 text-orange hover:bg-orange/20 transition-colors"
             >
@@ -542,7 +675,7 @@ export default function IngredientsPage() {
         </div>
         {canWrite && (
           <button
-            onClick={() => openCreate()}
+            onClick={() => openNamePrompt()}
             className="px-4 py-2 bg-orange text-white font-semibold rounded-lg hover:bg-orange-light transition-colors text-sm"
           >
             + Ajouter
@@ -615,6 +748,79 @@ export default function IngredientsPage() {
         </div>
       )}
 
+      {/* Name Prompt Dialog (Step 1) */}
+      {namePromptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setNamePromptOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="font-serif text-xl text-brun">Nouvel ingrédient</h2>
+            <p className="text-sm text-brun-light">Saisissez le nom de l&apos;ingrédient. On vérifie s&apos;il existe déjà ou s&apos;il a un équivalent proche.</p>
+            <input
+              type="text"
+              value={promptName}
+              onChange={e => setPromptName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !exactMatch) validateNamePrompt() }}
+              className={INPUT_CLASS}
+              placeholder="Nom de l'ingrédient..."
+              autoFocus
+            />
+
+            {/* Exact match */}
+            {exactMatch && (
+              <div className="bg-jaune/10 border border-jaune/30 rounded-lg p-4 space-y-3">
+                <p className="text-sm text-brun">
+                  <span className="font-semibold">{exactMatch.name}</span> existe déjà.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openEditFromPrompt(exactMatch)}
+                  className="text-sm font-medium text-orange hover:text-orange-light transition-colors"
+                >
+                  Modifier cet ingrédient →
+                </button>
+              </div>
+            )}
+
+            {/* Similar matches (only if no exact) */}
+            {!exactMatch && similarMatches.length > 0 && (
+              <div className="bg-vert-eau/10 border border-vert-eau/30 rounded-lg p-4 space-y-2">
+                <p className="text-sm text-brun font-medium">
+                  Ingrédient{similarMatches.length > 1 ? "s" : ""} similaire{similarMatches.length > 1 ? "s" : ""} trouvé{similarMatches.length > 1 ? "s" : ""} :
+                </p>
+                <div className="space-y-1">
+                  {similarMatches.map(ing => (
+                    <button
+                      key={ing.id}
+                      type="button"
+                      onClick={() => openEditFromPrompt(ing)}
+                      className="block w-full text-left text-sm text-brun hover:text-orange transition-colors py-1 px-2 rounded hover:bg-white"
+                    >
+                      → {ing.name}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-brun-light italic pt-2 border-t border-vert-eau/20">
+                  Ou créez quand même un nouvel ingrédient avec le bouton ci-dessous.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setNamePromptOpen(false)}
+                className="px-4 py-2 text-sm text-brun-light hover:text-brun transition-colors">
+                Annuler
+              </button>
+              {!exactMatch && (
+                <button type="button" onClick={validateNamePrompt}
+                  disabled={!promptName.trim()}
+                  className="px-4 py-2 bg-orange text-white text-sm font-semibold rounded-lg hover:bg-orange-light transition-colors disabled:opacity-50">
+                  {similarMatches.length > 0 ? "Créer quand même" : "Continuer"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Create/Edit Panel */}
       <SidePanel
         open={panelOpen}
@@ -633,7 +839,7 @@ export default function IngredientsPage() {
 
           <div>
             <label className="block text-sm font-medium text-brun mb-1">Nom *</label>
-            <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} className={INPUT_CLASS} autoFocus />
+            <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} className={INPUT_CLASS} />
           </div>
 
           {/* Image */}
@@ -743,46 +949,6 @@ export default function IngredientsPage() {
             <textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} rows={2} className={INPUT_CLASS} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-brun mb-1">Unité par défaut</label>
-              <select value={formDefaultUnitId} onChange={(e) => setFormDefaultUnitId(e.target.value)} className={INPUT_CLASS}>
-                <option value="">Aucune</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.abbreviation})</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-brun mb-1">Rayon par défaut</label>
-              <select value={formDefaultAisleId} onChange={(e) => setFormDefaultAisleId(e.target.value)} className={INPUT_CLASS}>
-                <option value="">Aucun</option>
-                {rootAisles.map((root) => {
-                  const subs = (subAislesByParent.get(root.id) || []).sort(
-                    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
-                  )
-                  if (subs.length === 0) {
-                    return (
-                      <option key={root.id} value={root.id}>
-                        {root.name}
-                      </option>
-                    )
-                  }
-                  return (
-                    <optgroup key={root.id} label={root.name}>
-                      <option value={root.id}>{root.name} (racine)</option>
-                      {subs.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )
-                })}
-              </select>
-            </div>
-          </div>
-
           {/* Multi-rayon checkboxes */}
           <div className="border-t border-brun/10 pt-4">
             <label className="block text-sm font-medium text-brun mb-2">Rayons</label>
@@ -845,8 +1011,13 @@ export default function IngredientsPage() {
                     onChange={() => {
                       setFormUnitIds((prev) => {
                         const next = new Set(prev)
-                        if (next.has(u.id)) next.delete(u.id)
-                        else next.add(u.id)
+                        if (next.has(u.id)) {
+                          next.delete(u.id)
+                          // Clear default if unchecked
+                          if (formDefaultUnitId === u.id) setFormDefaultUnitId("")
+                        } else {
+                          next.add(u.id)
+                        }
                         return next
                       })
                     }}
@@ -856,6 +1027,37 @@ export default function IngredientsPage() {
               ))}
             </div>
           </div>
+
+          {/* Defaults — filtered by checked items */}
+          {(formAisleIds.size > 0 || formUnitIds.size > 0) && (
+            <div className="border-t border-brun/10 pt-4">
+              <label className="block text-sm font-medium text-brun mb-3">Par défaut</label>
+              <div className="grid grid-cols-2 gap-3">
+                {formUnitIds.size > 0 && (
+                  <div>
+                    <label className="block text-xs text-brun-light mb-1">Unité par défaut</label>
+                    <select value={formDefaultUnitId} onChange={(e) => setFormDefaultUnitId(e.target.value)} className={INPUT_CLASS}>
+                      <option value="">Aucune</option>
+                      {units.filter(u => formUnitIds.has(u.id)).map((u) => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.abbreviation})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {formAisleIds.size > 0 && (
+                  <div>
+                    <label className="block text-xs text-brun-light mb-1">Rayon par défaut</label>
+                    <select value={formDefaultAisleId} onChange={(e) => setFormDefaultAisleId(e.target.value)} className={INPUT_CLASS}>
+                      <option value="">Aucun</option>
+                      {aisles.filter(a => formAisleIds.has(a.id)).map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </SidePanel>
 
