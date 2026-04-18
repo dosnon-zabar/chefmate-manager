@@ -5,6 +5,7 @@ import { formatIngredientNatural } from "@/lib/format-ingredient"
 
 interface ShoppingItem {
   name: string
+  namePlural?: string | null
   quantity: number
   unit: string
   unitPlural?: string | null
@@ -242,7 +243,7 @@ function measureItemHeight(doc: jsPDF, item: ShoppingItem, maxWidth: number): nu
 
 function renderItem(doc: jsPDF, item: ShoppingItem, x: number, y: number, maxWidth: number) {
   // Format using natural French rules (pcs hidden, de/d', plurals)
-  const formatted = formatIngredientNatural(item.name, item.quantity, item.unit, item.unitPlural)
+  const formatted = formatIngredientNatural(item.name, item.quantity, item.unit, item.unitPlural, item.namePlural)
 
   doc.setFont("helvetica", "normal")
   doc.setTextColor(51, 51, 51)

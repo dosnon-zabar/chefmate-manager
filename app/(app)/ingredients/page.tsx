@@ -36,6 +36,7 @@ interface Ingredient {
   id: string
   name: string
   name_en: string | null
+  name_plural: string | null
   description: string | null
   image_url: string | null
   default_unit_id: string | null
@@ -76,6 +77,7 @@ export default function IngredientsPage() {
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null)
   const [formName, setFormName] = useState("")
   const [formNameEn, setFormNameEn] = useState("")
+  const [formNamePlural, setFormNamePlural] = useState("")
   const [formDescription, setFormDescription] = useState("")
   const [formDefaultUnitId, setFormDefaultUnitId] = useState("")
   const [formDefaultAisleId, setFormDefaultAisleId] = useState("")
@@ -323,6 +325,7 @@ export default function IngredientsPage() {
     setEditingIngredient(null)
     setFormName(name)
     setFormNameEn("")
+    setFormNamePlural("")
     setFormDescription("")
     setFormDefaultUnitId("")
     if (!preselectedAisleId) {
@@ -342,6 +345,7 @@ export default function IngredientsPage() {
     setEditingIngredient(ing)
     setFormName(ing.name)
     setFormNameEn(ing.name_en || "")
+    setFormNamePlural(ing.name_plural || "")
     setFormDescription(ing.description || "")
     setFormDefaultUnitId(ing.default_unit_id || "")
     setFormDefaultAisleId(ing.default_aisle_id || "")
@@ -372,6 +376,7 @@ export default function IngredientsPage() {
       const body: Record<string, unknown> = {
         name: formName.trim(),
         name_en: formNameEn.trim() || null,
+        name_plural: formNamePlural.trim() || null,
         description: formDescription.trim() || null,
         image_url: formImageUrl || null,
         default_unit_id: formDefaultUnitId || null,
@@ -940,6 +945,20 @@ export default function IngredientsPage() {
               onChange={(e) => setFormNameEn(e.target.value)}
               className={INPUT_CLASS}
               placeholder="Tomato, Onion, Carrot..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-brun mb-1">
+              Pluriel
+              <span className="font-normal text-brun-light ml-1">(si différent de « nom + s »)</span>
+            </label>
+            <input
+              type="text"
+              value={formNamePlural}
+              onChange={(e) => setFormNamePlural(e.target.value)}
+              className={INPUT_CLASS}
+              placeholder="ex: fleurs de sureau, choux..."
             />
           </div>
 

@@ -30,6 +30,7 @@ interface MasterIngredient {
   id: string
   name: string
   name_en: string | null
+  name_plural: string | null
   image_url: string | null
   default_unit_id: string | null
   default_aisle_id: string | null
@@ -40,15 +41,24 @@ interface MasterIngredient {
 interface RecipeIngredient {
   id: string
   name: string
+  name_plural: string | null
   quantity: number | null
   sort_order: number
   comment: string | null
   ingredient_master_id: string | null
+  group_id: string | null
   unit: UnitRef | null
   aisle: AisleRef | null
   master: MasterIngredient | null
   _availableUnitIds?: string[]
   _availableAisleIds?: string[]
+  _client_group_id?: string | null  // local working ID
+}
+
+interface IngredientGroup {
+  id: string  // can be a real DB id or "new-..." (frontend only)
+  title: string
+  sort_order: number
 }
 
 interface RecipeStep {
@@ -89,6 +99,7 @@ interface Recipe {
   recipe_seasons: Array<{ season: SeasonRef | null }>
   recipe_tags: Array<{ tag: TagRef | null }>
   ingredients: RecipeIngredient[]
+  ingredient_groups?: IngredientGroup[]
   recipe_steps: RecipeStep[]
 }
 
@@ -154,7 +165,7 @@ export default function RecipeEditPage() {
         fetch("/api/portion-types").then(r => r.json()).then(j => setAllPortionTypes(j.data ?? [])).catch(() => {}),
         fetch("/api/ingredients").then(r => r.json()).then(j => setCatalogIngredients(
           (j.data ?? []).map((i: Record<string, unknown>) => ({
-            id: i.id, name: i.name, name_en: i.name_en, image_url: i.image_url ?? null,
+            id: i.id, name: i.name, name_en: i.name_en, name_plural: i.name_plural ?? null, image_url: i.image_url ?? null,
             default_unit_id: i.default_unit_id, default_aisle_id: i.default_aisle_id,
             unit_ids: ((i.ingredient_units as Array<{ unit: { id: string } | null }>) ?? [])
               .map((iu) => iu.unit?.id)
@@ -964,6 +975,7 @@ function IngredientSection({
 }) {
   const { showToast } = useToast()
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([])
+  const [groups, setGroups] = useState<IngredientGroup[]>([])
   const [saving, setSaving] = useState(false)
 
   // Autocomplete state per row
@@ -983,26 +995,69 @@ function IngredientSection({
             ...ing,
             _availableUnitIds: cat?.unit_ids,
             _availableAisleIds: cat?.aisle_ids,
+            _client_group_id: ing.group_id,
           }
         })
     )
+    setGroups(
+      [...(recipe.ingredient_groups || [])].sort((a, b) => a.sort_order - b.sort_order)
+    )
   }, [recipe, catalogIngredients])
 
-  function addIngredient() {
+  function addIngredient(client_group_id: string | null = null) {
     setIngredients((prev) => [
       ...prev,
       {
-        id: `new-${Date.now()}`,
+        id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name: "",
+        name_plural: null,
         quantity: null,
         sort_order: prev.length,
         comment: null,
         ingredient_master_id: null,
+        group_id: null,
         unit: null,
         aisle: null,
         master: null,
+        _client_group_id: client_group_id,
       },
     ])
+  }
+
+  function addGroup() {
+    setGroups((prev) => [
+      ...prev,
+      {
+        id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: "",
+        sort_order: prev.length,
+      },
+    ])
+  }
+
+  function updateGroup(id: string, updates: Partial<IngredientGroup>) {
+    setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, ...updates } : g)))
+  }
+
+  function removeGroup(id: string) {
+    // Remove the group, and clear group_id on its ingredients
+    setGroups((prev) => prev.filter((g) => g.id !== id))
+    setIngredients((prev) => prev.map((i) => (i._client_group_id === id ? { ...i, _client_group_id: null } : i)))
+  }
+
+  function moveGroup(id: string, direction: -1 | 1) {
+    setGroups((prev) => {
+      const idx = prev.findIndex((g) => g.id === id)
+      const target = idx + direction
+      if (idx < 0 || target < 0 || target >= prev.length) return prev
+      const next = [...prev]
+      ;[next[idx], next[target]] = [next[target], next[idx]]
+      return next
+    })
+  }
+
+  function setIngredientGroup(idx: number, client_group_id: string | null) {
+    setIngredients((prev) => prev.map((i, ii) => (ii === idx ? { ...i, _client_group_id: client_group_id } : i)))
   }
 
   function updateIngredient(idx: number, updates: Partial<RecipeIngredient>) {
@@ -1016,6 +1071,7 @@ function IngredientSection({
     const defaultAisle = allAisles.find((a) => a.id === master.default_aisle_id) || null
     updateIngredient(idx, {
       name: master.name,
+      name_plural: master.name_plural,
       ingredient_master_id: master.id,
       master,
       unit: defaultUnit,
@@ -1034,16 +1090,38 @@ function IngredientSection({
   // Drag and drop reorder
   function handleDragStart(e: React.DragEvent, idx: number) {
     e.dataTransfer.setData("text/plain", String(idx))
+    e.dataTransfer.effectAllowed = "move"
   }
 
   function handleDrop(e: React.DragEvent, targetIdx: number) {
     e.preventDefault()
+    e.stopPropagation()
     const fromIdx = parseInt(e.dataTransfer.getData("text/plain"))
     if (isNaN(fromIdx) || fromIdx === targetIdx) return
     setIngredients((prev) => {
       const next = [...prev]
       const [moved] = next.splice(fromIdx, 1)
+      const target = next[targetIdx > fromIdx ? targetIdx - 1 : targetIdx]
+      // Inherit target's group when moving across
+      if (target) {
+        moved._client_group_id = target._client_group_id ?? null
+      }
       next.splice(targetIdx, 0, moved)
+      return next
+    })
+  }
+
+  // Drop on a group container (when group is empty or to add at end of group)
+  function handleDropInGroup(e: React.DragEvent, client_group_id: string | null) {
+    e.preventDefault()
+    e.stopPropagation()
+    const fromIdx = parseInt(e.dataTransfer.getData("text/plain"))
+    if (isNaN(fromIdx)) return
+    setIngredients((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIdx, 1)
+      moved._client_group_id = client_group_id
+      next.push(moved)
       return next
     })
   }
@@ -1063,16 +1141,36 @@ function IngredientSection({
     }
 
     setSaving(true)
-    const payload = named.map((i, idx) => ({
+    // Re-order ingredients: grouped first (by group order, then ingredient order
+    // within each group), then ungrouped.
+    const groupOrder = new Map(groups.map((g, i) => [g.id, i]))
+    const sortedNamed = [...named].sort((a, b) => {
+      const ga = a._client_group_id ? (groupOrder.get(a._client_group_id) ?? -1) : Infinity
+      const gb = b._client_group_id ? (groupOrder.get(b._client_group_id) ?? -1) : Infinity
+      if (ga !== gb) return ga - gb
+      // Same group: keep current array order
+      return named.indexOf(a) - named.indexOf(b)
+    })
+
+    const ingredientsPayload = sortedNamed.map((i, idx) => ({
       name: i.name.trim(),
+      name_plural: i.name_plural?.trim() || null,
       quantity: i.quantity,
       unit_id: i.unit?.id || null,
       aisle_id: i.aisle?.id || null,
       ingredient_master_id: i.ingredient_master_id || null,
       comment: i.comment || null,
       sort_order: idx,
+      client_group_id: i._client_group_id || null,
     }))
-    if (await onPatch({ ingredients: payload })) {
+
+    const groupsPayload = groups.map((g, idx) => ({
+      client_id: g.id,
+      title: g.title.trim() || "Sans titre",
+      sort_order: idx,
+    }))
+
+    if (await onPatch({ ingredients: ingredientsPayload, groups: groupsPayload })) {
       showToast("Ingrédients enregistrés")
       void onRefresh()
     }
@@ -1109,6 +1207,185 @@ function IngredientSection({
         .filter((c) => c.name.toLowerCase().includes(acFilter.toLowerCase()))
         .slice(0, 8)
     : []
+
+  function renderIngredientRow(ing: RecipeIngredient, idx: number) {
+    const nameEn = ing.master?.name_en
+    return (
+      <div key={ing.id}>
+        <div
+          draggable
+          onDragStart={(e) => handleDragStart(e, idx)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => handleDrop(e, idx)}
+          className="grid grid-cols-[auto_24px_3fr_70px_80px_2fr_auto_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
+        >
+          <svg className="w-3.5 h-3.5 text-brun-light cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" />
+            <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+            <circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
+          </svg>
+
+          {(() => {
+            const adminBase = getAdminBase()
+            const masterImg = ing.master?.image_url
+            const imgSrc = masterImg
+              ? (masterImg.startsWith("http") ? masterImg : `${adminBase}${masterImg}`)
+              : nameEn
+                ? `https://www.themealdb.com/images/ingredients/${encodeURIComponent(nameEn)}-Small.png`
+                : null
+            return imgSrc ? (
+              <img src={imgSrc} alt="" className="w-6 h-6 object-contain flex-shrink-0 rounded" loading="lazy"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }} />
+            ) : (
+              <span className="w-6 h-6 flex-shrink-0" />
+            )
+          })()}
+
+          <div className="relative">
+            <input
+              type="text"
+              value={ing.name}
+              onChange={(e) => {
+                updateIngredient(idx, { name: e.target.value, ingredient_master_id: null, master: null })
+                setAcOpen(idx)
+                setAcFilter(e.target.value)
+              }}
+              onFocus={() => { setAcOpen(idx); setAcFilter(ing.name) }}
+              onBlur={() => setTimeout(() => setAcOpen(null), 200)}
+              placeholder="Nom de l'ingrédient"
+              className={INPUT_CLASS + " text-xs"}
+            />
+            {acOpen === idx && acResults.length > 0 && (
+              <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-brun/10 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                {acResults.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={() => selectFromCatalog(idx, c)}
+                    className="w-full text-left px-3 py-1.5 text-xs text-brun hover:bg-creme flex items-center gap-2"
+                  >
+                    {(() => {
+                      const aBase = getAdminBase()
+                      const iSrc = c.image_url
+                        ? (c.image_url.startsWith("http") ? c.image_url : `${aBase}${c.image_url}`)
+                        : c.name_en
+                          ? `https://www.themealdb.com/images/ingredients/${encodeURIComponent(c.name_en)}-Small.png`
+                          : null
+                      return iSrc ? (
+                        <img src={iSrc} alt="" className="w-5 h-5 object-contain rounded"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }} />
+                      ) : null
+                    })()}
+                    <span>{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <input
+            type="number"
+            step="any"
+            min="0"
+            value={ing.quantity ?? ""}
+            onChange={(e) => {
+              const v = e.target.value ? parseFloat(e.target.value) : null
+              updateIngredient(idx, { quantity: v !== null && v < 0 ? 0 : v })
+            }}
+            placeholder="Qté"
+            className={INPUT_CLASS + " text-xs text-center"}
+          />
+
+          <select
+            value={ing.unit?.id || ""}
+            onChange={(e) => {
+              const u = allUnits.find((u) => u.id === e.target.value) || null
+              updateIngredient(idx, { unit: u })
+            }}
+            className={INPUT_CLASS + " text-xs"}
+          >
+            <option value="">Unité</option>
+            {(ing._availableUnitIds && ing._availableUnitIds.length > 0
+              ? allUnits.filter((u) => ing._availableUnitIds!.includes(u.id))
+              : allUnits
+            ).map((u) => (
+              <option key={u.id} value={u.id}>{u.abbreviation}</option>
+            ))}
+          </select>
+
+          <select
+            value={ing.aisle?.id || ""}
+            onChange={(e) => {
+              const a = allAisles.find((a) => a.id === e.target.value) || null
+              updateIngredient(idx, { aisle: a })
+            }}
+            className={INPUT_CLASS + " text-xs"}
+          >
+            <option value="">Rayon</option>
+            {(ing._availableAisleIds && ing._availableAisleIds.length > 0
+              ? allAisles.filter((a) => ing._availableAisleIds!.includes(a.id))
+              : allAisles
+            ).map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+
+          {/* Group selector */}
+          {groups.length > 0 && (
+            <select
+              value={ing._client_group_id ?? ""}
+              onChange={(e) => setIngredientGroup(idx, e.target.value || null)}
+              className={INPUT_CLASS + " text-xs w-24"}
+              title="Déplacer dans un groupe"
+            >
+              <option value="">Hors groupe</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.title || "Sans titre"}</option>
+              ))}
+            </select>
+          )}
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => toggleComment(idx)}
+              title="Commentaire"
+              className={`transition-colors p-0.5 ${
+                ing.comment || commentOpenIdx.has(idx)
+                  ? "text-orange"
+                  : "text-brun-light/30 hover:text-orange opacity-0 group-hover:opacity-100"
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => removeIngredient(idx)}
+              className="text-brun-light hover:text-rose transition-colors p-0.5 opacity-0 group-hover:opacity-100"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {commentOpenIdx.has(idx) && (
+          <div className="ml-12 mb-1">
+            <input
+              type="text"
+              value={ing.comment ?? ""}
+              onChange={(e) => updateIngredient(idx, { comment: e.target.value || null })}
+              placeholder="Commentaire (ex: coupé en dés, à température ambiante...)"
+              className={INPUT_CLASS + " text-xs text-brun-light italic"}
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm">
@@ -1152,10 +1429,17 @@ function IngredientSection({
           </button>
           <button
             type="button"
-            onClick={addIngredient}
+            onClick={addGroup}
+            className="px-3 py-1 text-xs font-medium text-vert-eau bg-vert-eau/10 rounded-lg hover:bg-vert-eau/20 transition-colors"
+          >
+            + Groupe
+          </button>
+          <button
+            type="button"
+            onClick={() => addIngredient()}
             className="px-3 py-1 text-xs font-medium text-orange bg-orange/10 rounded-lg hover:bg-orange/20 transition-colors"
           >
-            + Ajouter
+            + Ingrédient
           </button>
           <button
             type="button"
@@ -1168,185 +1452,83 @@ function IngredientSection({
         </div>
       </div>
 
-      {ingredients.length === 0 ? (
+      {ingredients.length === 0 && groups.length === 0 ? (
         <p className="text-xs text-brun-light italic py-4 text-center">
-          Aucun ingrédient. Cliquez sur + Ajouter.
+          Aucun ingrédient. Cliquez sur + Ingrédient ou + Groupe.
         </p>
       ) : (
-        <div className="space-y-1">
-          {ingredients.map((ing, idx) => {
-            const nameEn = ing.master?.name_en
+        <div className="space-y-3">
+          {/* Groups */}
+          {groups.map((g, gi) => {
+            const groupIngs = ingredients
+              .map((ing, idx) => ({ ing, idx }))
+              .filter(({ ing }) => ing._client_group_id === g.id)
             return (
-              <div key={ing.id}>
               <div
-                draggable
-                onDragStart={(e) => handleDragStart(e, idx)}
+                key={g.id}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => handleDrop(e, idx)}
-                className="grid grid-cols-[auto_24px_3fr_80px_100px_2fr_auto] items-center gap-2 py-1.5 px-2 rounded hover:bg-creme/30 group"
+                onDrop={(e) => handleDropInGroup(e, g.id)}
+                className="border border-brun/10 rounded-lg p-3 bg-creme/20 space-y-1"
               >
-                {/* Drag handle */}
-                <svg className="w-3.5 h-3.5 text-brun-light cursor-grab active:cursor-grabbing flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" />
-                  <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
-                  <circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
-                </svg>
-
-                {/* Ingredient image: uploaded > TheMealDB > empty */}
-                {(() => {
-                  const adminBase = getAdminBase()
-                  const masterImg = ing.master?.image_url
-                  const imgSrc = masterImg
-                    ? (masterImg.startsWith("http") ? masterImg : `${adminBase}${masterImg}`)
-                    : nameEn
-                      ? `https://www.themealdb.com/images/ingredients/${encodeURIComponent(nameEn)}-Small.png`
-                      : null
-                  return imgSrc ? (
-                    <img src={imgSrc} alt="" className="w-6 h-6 object-contain flex-shrink-0 rounded" loading="lazy"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }} />
-                  ) : (
-                    <span className="w-6 h-6 flex-shrink-0" />
-                  )
-                })()}
-
-                {/* Name with autocomplete */}
-                <div className="relative">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex flex-col gap-0.5">
+                    <button type="button" onClick={() => moveGroup(g.id, -1)} disabled={gi === 0}
+                      className="text-xs text-brun-light hover:text-brun disabled:opacity-30 leading-none" aria-label="Monter le groupe">▲</button>
+                    <button type="button" onClick={() => moveGroup(g.id, 1)} disabled={gi === groups.length - 1}
+                      className="text-xs text-brun-light hover:text-brun disabled:opacity-30 leading-none" aria-label="Descendre le groupe">▼</button>
+                  </div>
                   <input
                     type="text"
-                    value={ing.name}
-                    onChange={(e) => {
-                      updateIngredient(idx, { name: e.target.value, ingredient_master_id: null, master: null })
-                      setAcOpen(idx)
-                      setAcFilter(e.target.value)
-                    }}
-                    onFocus={() => { setAcOpen(idx); setAcFilter(ing.name) }}
-                    onBlur={() => setTimeout(() => setAcOpen(null), 200)}
-                    placeholder="Nom de l'ingrédient"
-                    className={INPUT_CLASS + " text-xs"}
+                    value={g.title}
+                    onChange={(e) => updateGroup(g.id, { title: e.target.value })}
+                    placeholder="Titre du groupe (ex: Pour la pâte)"
+                    className="flex-1 px-2 py-1 text-sm font-medium rounded border border-brun/10 bg-white text-brun focus:outline-none focus:ring-2 focus:ring-vert-eau/30"
                   />
-                  {acOpen === idx && acResults.length > 0 && (
-                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-brun/10 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {acResults.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onMouseDown={() => selectFromCatalog(idx, c)}
-                          className="w-full text-left px-3 py-1.5 text-xs text-brun hover:bg-creme flex items-center gap-2"
-                        >
-                          {(() => {
-                            const aBase = getAdminBase()
-                            const iSrc = c.image_url
-                              ? (c.image_url.startsWith("http") ? c.image_url : `${aBase}${c.image_url}`)
-                              : c.name_en
-                                ? `https://www.themealdb.com/images/ingredients/${encodeURIComponent(c.name_en)}-Small.png`
-                                : null
-                            return iSrc ? (
-                              <img src={iSrc} alt="" className="w-5 h-5 object-contain rounded"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }} />
-                            ) : null
-                          })()}
-                          <span>{c.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Quantity */}
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={ing.quantity ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value ? parseFloat(e.target.value) : null
-                    updateIngredient(idx, { quantity: v !== null && v < 0 ? 0 : v })
-                  }}
-                  placeholder="Qté"
-                  className={INPUT_CLASS + " text-xs text-center"}
-                />
-
-                {/* Unit */}
-                <select
-                  value={ing.unit?.id || ""}
-                  onChange={(e) => {
-                    const u = allUnits.find((u) => u.id === e.target.value) || null
-                    updateIngredient(idx, { unit: u })
-                  }}
-                  className={INPUT_CLASS + " text-xs"}
-                >
-                  <option value="">Unité</option>
-                  {(ing._availableUnitIds && ing._availableUnitIds.length > 0
-                    ? allUnits.filter((u) => ing._availableUnitIds!.includes(u.id))
-                    : allUnits
-                  ).map((u) => (
-                    <option key={u.id} value={u.id}>{u.abbreviation}</option>
-                  ))}
-                </select>
-
-                {/* Aisle (rayon) */}
-                <select
-                  value={ing.aisle?.id || ""}
-                  onChange={(e) => {
-                    const a = allAisles.find((a) => a.id === e.target.value) || null
-                    updateIngredient(idx, { aisle: a })
-                  }}
-                  className={INPUT_CLASS + " text-xs"}
-                >
-                  <option value="">Rayon</option>
-                  {(ing._availableAisleIds && ing._availableAisleIds.length > 0
-                    ? allAisles.filter((a) => ing._availableAisleIds!.includes(a.id))
-                    : allAisles
-                  ).map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-
-                {/* Actions: comment toggle + remove */}
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => toggleComment(idx)}
-                    title="Commentaire"
-                    className={`transition-colors p-0.5 ${
-                      ing.comment || commentOpenIdx.has(idx)
-                        ? "text-orange"
-                        : "text-brun-light/30 hover:text-orange opacity-0 group-hover:opacity-100"
-                    }`}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                    </svg>
+                  <button type="button" onClick={() => addIngredient(g.id)}
+                    className="text-xs text-orange hover:text-orange-light whitespace-nowrap">
+                    + Ingrédient
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => removeIngredient(idx)}
-                    className="text-brun-light hover:text-rose transition-colors p-0.5 opacity-0 group-hover:opacity-100"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                  <button type="button" onClick={() => removeGroup(g.id)}
+                    className="text-xs text-rose hover:text-rose/80 whitespace-nowrap">
+                    Supprimer
                   </button>
                 </div>
-              </div>
-
-              {/* Comment row */}
-              {commentOpenIdx.has(idx) && (
-                <div className="ml-12 mb-1">
-                  <input
-                    type="text"
-                    value={ing.comment ?? ""}
-                    onChange={(e) => updateIngredient(idx, { comment: e.target.value || null })}
-                    placeholder="Commentaire (ex: coupé en dés, à température ambiante...)"
-                    className={INPUT_CLASS + " text-xs text-brun-light italic"}
-                  />
-                </div>
-              )}
+                {groupIngs.length === 0 ? (
+                  <p className="text-xs text-brun-light italic py-1 px-2">Aucun ingrédient dans ce groupe</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {groupIngs.map(({ ing, idx }) => renderIngredientRow(ing, idx))}
+                  </div>
+                )}
               </div>
             )
           })}
+
+          {/* Ungrouped ingredients (after all groups) */}
+          {(() => {
+            const ungrouped = ingredients
+              .map((ing, idx) => ({ ing, idx }))
+              .filter(({ ing }) => !ing._client_group_id)
+            // Always render a drop zone if groups exist, even when no ungrouped items
+            if (ungrouped.length === 0 && groups.length === 0) return null
+            return (
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => handleDropInGroup(e, null)}
+                className={`space-y-0.5 pt-1 ${groups.length > 0 ? "border-t border-dashed border-brun/10 pt-3" : ""}`}
+              >
+                {groups.length > 0 && (
+                  <p className="text-[10px] uppercase tracking-wide text-brun-light/60 mb-1 px-2">
+                    Hors groupe {ungrouped.length === 0 && <span className="italic">(glissez ici pour sortir d&apos;un groupe)</span>}
+                  </p>
+                )}
+                {ungrouped.map(({ ing, idx }) => renderIngredientRow(ing, idx))}
+              </div>
+            )
+          })()}
         </div>
       )}
+
 
       {/* Preview overlay */}
       {previewOpen && (
@@ -1368,33 +1550,61 @@ function IngredientSection({
                 ✕
               </button>
             </div>
-            <ul className="space-y-1.5">
-              {ingredients
-                .filter((i) => i.name.trim())
-                .map((ing, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm text-brun">
-                    <span className="text-brun-light mt-0.5">•</span>
-                    <span>
-                      {formatIngredientNatural(
-                        ing.name,
-                        ing.quantity,
-                        ing.unit?.abbreviation,
-                        ing.unit?.abbreviation_plural
-                      )}
-                      {ing.comment && (
-                        <span className="text-brun-light italic ml-1">
-                          ({ing.comment})
-                        </span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-            </ul>
-            {ingredients.filter((i) => i.name.trim()).length === 0 && (
-              <p className="text-xs text-brun-light italic text-center py-4">
-                Aucun ingrédient
-              </p>
-            )}
+            {(() => {
+              const named = ingredients.filter((i) => i.name.trim())
+              if (named.length === 0) {
+                return (
+                  <p className="text-xs text-brun-light italic text-center py-4">
+                    Aucun ingrédient
+                  </p>
+                )
+              }
+              const renderItem = (ing: RecipeIngredient, idx: number) => (
+                <li key={idx} className="flex items-start gap-2 text-sm text-brun">
+                  <span className="text-brun-light mt-0.5">•</span>
+                  <span>
+                    {formatIngredientNatural(
+                      ing.name,
+                      ing.quantity,
+                      ing.unit?.abbreviation,
+                      ing.unit?.abbreviation_plural,
+                      ing.name_plural
+                    )}
+                    {ing.comment && (
+                      <span className="text-brun-light italic ml-1">
+                        ({ing.comment})
+                      </span>
+                    )}
+                  </span>
+                </li>
+              )
+              const hasGroups =
+                groups.length > 0 &&
+                named.some((i) => i._client_group_id)
+              if (!hasGroups) {
+                return <ul className="space-y-1.5">{named.map(renderItem)}</ul>
+              }
+              const ungrouped = named.filter((i) => !i._client_group_id)
+              return (
+                <div className="space-y-4">
+                  {groups.map((g) => {
+                    const items = named.filter((i) => i._client_group_id === g.id)
+                    if (items.length === 0) return null
+                    return (
+                      <div key={g.id}>
+                        <h4 className="font-serif text-base text-brun mb-1.5">
+                          {g.title.trim() || "Sans titre"}
+                        </h4>
+                        <ul className="space-y-1.5">{items.map(renderItem)}</ul>
+                      </div>
+                    )
+                  })}
+                  {ungrouped.length > 0 && (
+                    <ul className="space-y-1.5">{ungrouped.map(renderItem)}</ul>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}

@@ -44,6 +44,7 @@ interface EventRecipe {
     serving_count: number
     ingredients?: Array<{
       name: string
+      name_plural: string | null
       quantity: number | null
       ingredient_master_id: string | null
       unite: UnitRef | null
@@ -1403,7 +1404,7 @@ function OrganisationSection({ event, allAisles, allUnits, catalogIngredients }:
   allUnits: UnitRef[]
   catalogIngredients: Array<{ id: string; name: string; default_aisle_id: string | null; aisle_ids: string[]; conversions: Array<{ source_unit_id: string; target_unit_id: string; conversion_factor: number }> }>
 }) {
-  type ShoppingItem = { name: string; quantity: number; unit: string; unitPlural: string | null; aisleId: string | null; sources: string[] }
+  type ShoppingItem = { name: string; namePlural: string | null; quantity: number; unit: string; unitPlural: string | null; aisleId: string | null; sources: string[] }
 
   // Build aisle lookup
   const aisleMap = useMemo(() => {
@@ -1513,7 +1514,7 @@ function OrganisationSection({ event, allAisles, allUnits, catalogIngredients }:
 
   // Aggregate all ingredients with unit normalization
   const allItems = useMemo(() => {
-    type RawItem = { name: string; qty: number; unitAbbrev: string; unitPlural: string | null; unitId: string | null; masterId: string | null; aisleId: string | null; source: string }
+    type RawItem = { name: string; namePlural: string | null; qty: number; unitAbbrev: string; unitPlural: string | null; unitId: string | null; masterId: string | null; aisleId: string | null; source: string }
     const rawItems: RawItem[] = []
 
     for (const er of event.event_recipes ?? []) {
@@ -1521,7 +1522,7 @@ function OrganisationSection({ event, allAisles, allUnits, catalogIngredients }:
       const ratio = er.recette.serving_count > 0 ? er.serving_count / er.recette.serving_count : 1
       for (const ing of er.recette.ingredients) {
         rawItems.push({
-          name: ing.name, qty: (ing.quantity ?? 0) * ratio,
+          name: ing.name, namePlural: ing.name_plural ?? null, qty: (ing.quantity ?? 0) * ratio,
           unitAbbrev: ing.unite?.abbreviation ?? "", unitPlural: ing.unite?.abbreviation_plural ?? null,
           unitId: ing.unite?.id ?? null,
           masterId: ing.ingredient_master_id ?? null,
@@ -1533,7 +1534,7 @@ function OrganisationSection({ event, allAisles, allUnits, catalogIngredients }:
 
     for (const ing of event.event_ingredients ?? []) {
       rawItems.push({
-        name: ing.name, qty: ing.quantity,
+        name: ing.name, namePlural: null, qty: ing.quantity,
         unitAbbrev: ing.unite?.abbreviation ?? "", unitPlural: ing.unite?.abbreviation_plural ?? null,
         unitId: ing.unite?.id ?? null,
         masterId: null, aisleId: ing.rayon?.id ?? null,
@@ -1556,7 +1557,7 @@ function OrganisationSection({ event, allAisles, allUnits, catalogIngredients }:
         if (!existing.aisleId && raw.aisleId) existing.aisleId = raw.aisleId
       } else {
         items.set(key, {
-          name: raw.name, quantity: normalized.qty, unit: normalized.baseUnit, unitPlural: raw.unitPlural,
+          name: raw.name, namePlural: raw.namePlural, quantity: normalized.qty, unit: normalized.baseUnit, unitPlural: raw.unitPlural,
           aisleId: raw.aisleId, sources: [raw.source], baseUnit: normalized.baseUnit,
         })
       }
@@ -1689,7 +1690,7 @@ function OrganisationSection({ event, allAisles, allUnits, catalogIngredients }:
                       )}
                       <div className={`space-y-0.5 ${showSubHeader ? "ml-3.5" : ""}`}>
                         {aisle.items.map((item, i) => {
-                          const formatted = formatIngredientNatural(item.name, item.quantity, item.unit, item.unitPlural)
+                          const formatted = formatIngredientNatural(item.name, item.quantity, item.unit, item.unitPlural, item.namePlural)
                           return (
                             <div key={i} className="flex items-baseline gap-2 py-0.5">
                               <span className="text-sm text-brun">{formatted}</span>

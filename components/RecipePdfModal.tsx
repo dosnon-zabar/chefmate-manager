@@ -6,6 +6,7 @@ import { formatIngredientNatural } from "@/lib/format-ingredient"
 
 interface Ingredient {
   name: string
+  name_plural?: string | null
   quantity: number | null
   unit?: { abbreviation: string; abbreviation_plural?: string | null } | null
   aisle?: { name: string; color: string } | null
@@ -140,7 +141,7 @@ export default function RecipePdfModal({ open, onClose, recipe }: Props) {
       doc.circle(margin + 2, y - 1.2, 1.5, "F")
 
       const text = ing.scaledQty !== null
-        ? formatIngredientNatural(ing.name, ing.scaledQty, ing.unit?.abbreviation, ing.unit?.abbreviation_plural)
+        ? formatIngredientNatural(ing.name, ing.scaledQty, ing.unit?.abbreviation, ing.unit?.abbreviation_plural, ing.name_plural)
         : ing.name.toLowerCase()
 
       const commentText = ing.comment ? ` (${ing.comment})` : ""
@@ -298,7 +299,8 @@ export default function RecipePdfModal({ open, onClose, recipe }: Props) {
                           ing.name,
                           ing.scaledQty,
                           ing.unit?.abbreviation,
-                          ing.unit?.abbreviation_plural
+                          ing.unit?.abbreviation_plural,
+                          ing.name_plural
                         )
                       : ing.name.toLowerCase()}
                     {ing.comment && (
