@@ -1626,14 +1626,56 @@ function StepSection({
   onRefresh: () => Promise<void>
 }) {
   const { showToast } = useToast()
+  const adminBase = getAdminBase()
   const [steps, setSteps] = useState<RecipeStep[]>([])
   const [saving, setSaving] = useState(false)
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null)
 
   useEffect(() => {
     setSteps(
       [...(recipe.recipe_steps || [])].sort((a, b) => a.sort_order - b.sort_order)
     )
   }, [recipe])
+
+  async function persistSteps(nextSteps: RecipeStep[]) {
+    const payload = nextSteps.map((s, idx) => ({
+      title: s.title,
+      text: s.text,
+      image_url: s.image_url,
+      sort_order: idx,
+    }))
+    if (await onPatch({ steps: payload })) {
+      void onRefresh()
+      return true
+    }
+    return false
+  }
+
+  async function uploadStepImage(idx: number, file: File) {
+    setUploadingIdx(idx)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("prefix", "recipes")
+      const res = await fetch("/api/upload-image", { method: "POST", body: fd })
+      const json = await res.json()
+      const url = json.data?.url ?? json.url
+      if (!res.ok || !url) throw new Error(json.error || "Erreur upload")
+      const next = steps.map((s, i) => (i === idx ? { ...s, image_url: url } : s))
+      setSteps(next)
+      if (await persistSteps(next)) showToast("Image enregistrée")
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Erreur upload", "error")
+    } finally {
+      setUploadingIdx(null)
+    }
+  }
+
+  async function removeStepImage(idx: number) {
+    const next = steps.map((s, i) => (i === idx ? { ...s, image_url: null } : s))
+    setSteps(next)
+    if (await persistSteps(next)) showToast("Image retirée")
+  }
 
   function addStep() {
     setSteps((prev) => [
@@ -1702,38 +1744,85 @@ function StepSection({
         </p>
       ) : (
         <div className="space-y-4">
-          {steps.map((step, idx) => (
-            <div key={step.id} className="bg-creme/50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="w-7 h-7 rounded-full bg-orange text-white flex items-center justify-center text-xs font-semibold">
-                  {idx + 1}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeStep(idx)}
-                  className="text-brun-light hover:text-rose transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+          {steps.map((step, idx) => {
+            const imgSrc = step.image_url
+              ? (step.image_url.startsWith("http") ? step.image_url : `${adminBase}${step.image_url}`)
+              : null
+            return (
+              <div key={step.id} className="bg-creme/50 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="w-7 h-7 rounded-full bg-orange text-white flex items-center justify-center text-xs font-semibold">
+                    {idx + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeStep(idx)}
+                    className="text-brun-light hover:text-rose transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex gap-3 items-start">
+                  {/* Image */}
+                  <div className="flex-shrink-0">
+                    {imgSrc ? (
+                      <div className="relative w-32 h-24 rounded-lg overflow-hidden border border-brun/10 bg-creme">
+                        <img src={imgSrc} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-32 h-24 rounded-lg border border-dashed border-brun/20 flex items-center justify-center bg-creme">
+                        <span className="text-xs text-brun-light/40">Image</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-1 justify-center">
+                      <label className="text-[10px] text-orange cursor-pointer hover:text-orange-light">
+                        {uploadingIdx === idx ? "..." : (imgSrc ? "Changer" : "Uploader")}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) void uploadStepImage(idx, f)
+                            e.target.value = ""
+                          }}
+                        />
+                      </label>
+                      {imgSrc && (
+                        <button
+                          type="button"
+                          onClick={() => void removeStepImage(idx)}
+                          className="text-[10px] text-red-400 hover:text-red-600"
+                        >
+                          Retirer
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Contenu */}
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="text"
+                      value={step.title ?? ""}
+                      onChange={(e) => updateStep(idx, "title", e.target.value)}
+                      placeholder="Titre de l'étape (optionnel)"
+                      className={INPUT_CLASS + " text-sm font-medium"}
+                    />
+                    <RichTextEditor
+                      key={step.id}
+                      value={step.text}
+                      onChange={(html) => updateStep(idx, "text", html)}
+                      placeholder="Décrivez cette étape..."
+                      rows={4}
+                    />
+                  </div>
+                </div>
               </div>
-              <input
-                type="text"
-                value={step.title ?? ""}
-                onChange={(e) => updateStep(idx, "title", e.target.value)}
-                placeholder="Titre de l'étape (optionnel)"
-                className={INPUT_CLASS + " mb-2 text-sm font-medium"}
-              />
-              <RichTextEditor
-                key={step.id}
-                value={step.text}
-                onChange={(html) => updateStep(idx, "text", html)}
-                placeholder="Décrivez cette étape..."
-                rows={4}
-              />
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
