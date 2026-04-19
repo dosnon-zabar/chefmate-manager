@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 import { getAdminBase } from "@/lib/admin-url"
+import { RecipeTiming } from "@/components/RecipeTiming"
+import { stepToTiming, sumTimings, type Timing } from "@/lib/timing"
 
 interface TeamRef {
   id: string
@@ -23,8 +25,18 @@ interface Recipe {
   recipe_seasons: Array<{ season: { id: string; name: string; icon: string } | null }>
   recipe_tags: Array<{ tag: { id: string; name: string } | null }>
   ingredients: Array<{ id: string; name: string }>
+  /** Steps with timing fields — we only need the timing cols for the
+   *  compact display on cards, but the API returns the full set. */
+  recipe_steps?: Array<Record<string, unknown>>
   created_at: string
   updated_at: string
+}
+
+/** Compute the aggregate timing of a recipe from its steps. Memoize
+ *  locally per row — cheap enough even re-computed on each render. */
+function recipeTiming(r: Recipe): Timing {
+  const steps = Array.isArray(r.recipe_steps) ? r.recipe_steps : []
+  return sumTimings(steps.map((s) => stepToTiming(s)))
 }
 
 /**
@@ -318,6 +330,13 @@ export default function RecettesPage() {
                         .join(", ")}
                     </p>
                   )}
+
+                  {/* Aggregated timing — hidden if all steps are empty */}
+                  <RecipeTiming
+                    timing={recipeTiming(recipe)}
+                    variant="compact"
+                    className="mb-1"
+                  />
 
                   {/* Seasons + Tags */}
                   {((recipe.recipe_seasons?.length ?? 0) > 0 ||
