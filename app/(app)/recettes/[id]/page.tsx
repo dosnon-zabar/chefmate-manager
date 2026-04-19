@@ -10,6 +10,8 @@ import { SortableTree, buildTreeFromFlat } from "@/components/SortableTree"
 import ConfirmDialog from "@/components/ConfirmDialog"
 import HelpBubble from "@/components/HelpBubble"
 import RecipePdfModal from "@/components/RecipePdfModal"
+import { RecipeTiming } from "@/components/RecipeTiming"
+import { stepToTiming, sumTimings, type Timing } from "@/lib/timing"
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
   ssr: false,
@@ -67,6 +69,16 @@ interface RecipeStep {
   title: string
   text: string
   image_url: string | null
+  // Timing fields — all nullable. Stored as min/max pairs so a single
+  // value is "min === max", and a range like "20-25 min" is two distinct
+  // numbers. See lib/timing.ts for the shared formatter / aggregator.
+  prep_minutes_min: number | null
+  prep_minutes_max: number | null
+  cook_minutes_min: number | null
+  cook_minutes_max: number | null
+  rest_minutes_min: number | null
+  rest_minutes_max: number | null
+  timing_notes: string | null
 }
 
 interface ImageObj {
@@ -1616,6 +1628,104 @@ function IngredientSection({
 // SECTION 4: ÉTAPES
 // =====================================================================
 
+/**
+ * Caps client-side (match DB CHECK constraints). Shows a soft warning
+ * in the input if exceeded — the server rejects anyway, this is just
+ * for immediate feedback.
+ */
+const TIMING_CAPS = { prep: 1440, cook: 1440, rest: 4320 } as const
+
+/** Normalize a timing form value ("", "15", null) → integer or null. */
+function parseTimingInput(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined) return null
+  const s = typeof v === "string" ? v.trim() : String(v)
+  if (!s) return null
+  const n = Number(s)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.trunc(n)
+}
+
+/**
+ * Small input group for one timing category (Préparation / Cuisson /
+ * Repos). Two number inputs side-by-side — the left one is the "min"
+ * (or the single value if both are equal), the right one the "max"
+ * (can be left blank to mean "same as min").
+ */
+function TimingCategoryInput({
+  label,
+  hint,
+  cap,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  hint?: string
+  cap: number
+  min: number | null
+  max: number | null
+  onChange: (next: { min: number | null; max: number | null }) => void
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] text-brun-light uppercase tracking-wide mb-1">
+        {label}
+        {hint && (
+          <span className="ml-1 text-brun-light/60 normal-case">({hint})</span>
+        )}
+      </label>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          max={cap}
+          step={1}
+          value={min ?? ""}
+          onChange={(e) => {
+            const parsed = parseTimingInput(e.target.value)
+            onChange({ min: parsed, max })
+          }}
+          placeholder="min"
+          aria-label={`${label} minimum (minutes)`}
+          className={INPUT_CLASS + " text-xs px-2 py-1 w-full"}
+        />
+        <span className="text-brun-light/50 text-xs">–</span>
+        <input
+          type="number"
+          min={0}
+          max={cap}
+          step={1}
+          value={max ?? ""}
+          onChange={(e) => {
+            const parsed = parseTimingInput(e.target.value)
+            onChange({ min, max: parsed })
+          }}
+          placeholder="max"
+          aria-label={`${label} maximum (minutes)`}
+          className={INPUT_CLASS + " text-xs px-2 py-1 w-full"}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** Serialize a step for the PATCH payload, flattening timing fields. */
+function stepToPayload(s: RecipeStep, idx: number) {
+  return {
+    title: s.title,
+    text: s.text,
+    image_url: s.image_url,
+    sort_order: idx,
+    prep_minutes_min: s.prep_minutes_min,
+    prep_minutes_max: s.prep_minutes_max,
+    cook_minutes_min: s.cook_minutes_min,
+    cook_minutes_max: s.cook_minutes_max,
+    rest_minutes_min: s.rest_minutes_min,
+    rest_minutes_max: s.rest_minutes_max,
+    timing_notes: s.timing_notes,
+  }
+}
+
 function StepSection({
   recipe,
   onPatch,
@@ -1638,12 +1748,7 @@ function StepSection({
   }, [recipe])
 
   async function persistSteps(nextSteps: RecipeStep[]) {
-    const payload = nextSteps.map((s, idx) => ({
-      title: s.title,
-      text: s.text,
-      image_url: s.image_url,
-      sort_order: idx,
-    }))
+    const payload = nextSteps.map((s, idx) => stepToPayload(s, idx))
     if (await onPatch({ steps: payload })) {
       void onRefresh()
       return true
@@ -1686,9 +1791,25 @@ function StepSection({
         title: "",
         text: "",
         image_url: null,
+        prep_minutes_min: null,
+        prep_minutes_max: null,
+        cook_minutes_min: null,
+        cook_minutes_max: null,
+        rest_minutes_min: null,
+        rest_minutes_max: null,
+        timing_notes: null,
       },
     ])
   }
+
+  /**
+   * Cumulated timing across all current steps — shown at the top of
+   * the section so the operator sees the total effort as they edit.
+   */
+  const cumulatedTiming: Timing = useMemo(
+    () => sumTimings(steps.map((s) => stepToTiming(s as unknown as Record<string, unknown>))),
+    [steps]
+  )
 
   function updateStep(idx: number, field: string, value: unknown) {
     setSteps((prev) =>
@@ -1702,12 +1823,7 @@ function StepSection({
 
   async function saveSteps() {
     setSaving(true)
-    const payload = steps.map((s, idx) => ({
-      title: s.title,
-      text: s.text,
-      image_url: s.image_url,
-      sort_order: idx,
-    }))
+    const payload = steps.map((s, idx) => stepToPayload(s, idx))
     if (await onPatch({ steps: payload })) {
       showToast("Étapes enregistrées")
       void onRefresh()
@@ -1736,6 +1852,13 @@ function StepSection({
             {saving ? "..." : "Enregistrer"}
           </button>
         </div>
+      </div>
+
+      {/* Cumulated recipe-level timing — rendered above the steps list so
+          the operator sees the aggregate as they type. Hidden entirely
+          when no step has any timing set. */}
+      <div className="mb-4">
+        <RecipeTiming timing={cumulatedTiming} variant="full" />
       </div>
 
       {steps.length === 0 ? (
@@ -1819,6 +1942,57 @@ function StepSection({
                       rows={4}
                     />
                   </div>
+                </div>
+
+                {/* Timing inputs — three categories (prep / cook / rest),
+                    each with a min and an optional max. Leave blank for
+                    "not specified". The DB enforces min ≤ max and upper
+                    caps; we softly limit max here via the input attribute. */}
+                <div className="mt-3 pt-3 border-t border-brun/5">
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <TimingCategoryInput
+                      label="Préparation"
+                      hint="actif"
+                      cap={TIMING_CAPS.prep}
+                      min={step.prep_minutes_min}
+                      max={step.prep_minutes_max}
+                      onChange={(next) => {
+                        updateStep(idx, "prep_minutes_min", next.min)
+                        updateStep(idx, "prep_minutes_max", next.max)
+                      }}
+                    />
+                    <TimingCategoryInput
+                      label="Cuisson"
+                      cap={TIMING_CAPS.cook}
+                      min={step.cook_minutes_min}
+                      max={step.cook_minutes_max}
+                      onChange={(next) => {
+                        updateStep(idx, "cook_minutes_min", next.min)
+                        updateStep(idx, "cook_minutes_max", next.max)
+                      }}
+                    />
+                    <TimingCategoryInput
+                      label="Repos / pousse"
+                      hint="passif"
+                      cap={TIMING_CAPS.rest}
+                      min={step.rest_minutes_min}
+                      max={step.rest_minutes_max}
+                      onChange={(next) => {
+                        updateStep(idx, "rest_minutes_min", next.min)
+                        updateStep(idx, "rest_minutes_max", next.max)
+                      }}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={step.timing_notes ?? ""}
+                    onChange={(e) =>
+                      updateStep(idx, "timing_notes", e.target.value || null)
+                    }
+                    placeholder={`Notes de timing (ex: "une nuit", "jusqu'à doublement")`}
+                    className={INPUT_CLASS + " text-xs mt-2"}
+                    maxLength={200}
+                  />
                 </div>
               </div>
             )
