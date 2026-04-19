@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 import { useToast } from "@/components/Toaster"
 import SeoBlock from "@/components/SeoBlock"
+import { FaviconBlock } from "@/components/FaviconBlock"
 import { getAdminBase } from "@/lib/admin-url"
 
 const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), {
@@ -81,6 +82,16 @@ interface Site {
   about_team_members: { name: string; role: string; text: string; image_url: string }[] | null
   about_contact_title: string | null
   about_contact_text: string | null
+  favicon_urls: {
+    source?: string
+    ico?: string
+    "16"?: string
+    "32"?: string
+    "48"?: string
+    "180"?: string
+    "192"?: string
+    "512"?: string
+  } | null
 }
 
 type TabKey = "general" | "accueil" | "recettes" | "evenements" | "apropos" | "footer"
@@ -285,6 +296,13 @@ function GeneralTab({ site, teams, isAdmin, onPatch, onRefresh }: {
           <span className="text-sm text-brun">Page À propos</span>
         </label>
       </div>
+
+      {/* Favicon */}
+      <FaviconBlock
+        siteId={site.id}
+        faviconUrls={site.favicon_urls}
+        onChange={onRefresh}
+      />
 
       {/* Réseaux sociaux */}
       <div className="bg-white rounded-2xl p-6 shadow-sm space-y-3">
