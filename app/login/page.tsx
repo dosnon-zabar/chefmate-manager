@@ -1,14 +1,28 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { Suspense, useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
+// Next 15/16 requires a Suspense boundary around any component that
+// reads useSearchParams() or the static prerender fails at build time.
+// We isolate the search-params read into a leaf and keep the form
+// statically renderable in the fallback.
 export default function LoginPage() {
-  const router = useRouter()
+  return (
+    <Suspense fallback={<LoginPageBody expired={false} />}>
+      <LoginPageWithParams />
+    </Suspense>
+  )
+}
+
+function LoginPageWithParams() {
   const searchParams = useSearchParams()
-  // Set by SessionGuard when a 401 from /api/* forces a redirect here.
-  // Distinguishes "your session was revoked" from a classic first visit.
   const expired = searchParams.get("expired") === "1"
+  return <LoginPageBody expired={expired} />
+}
+
+function LoginPageBody({ expired }: { expired: boolean }) {
+  const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
