@@ -1,10 +1,14 @@
 "use client"
 
 import { useState, type FormEvent } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // Set by SessionGuard when a 401 from /api/* forces a redirect here.
+  // Distinguishes "your session was revoked" from a classic first visit.
+  const expired = searchParams.get("expired") === "1"
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -55,6 +59,12 @@ export default function LoginPage() {
           onSubmit={handleSubmit}
           className="bg-white rounded-2xl p-6 shadow-sm space-y-4"
         >
+          {expired && !error && (
+            <div className="bg-ocre/15 text-brun text-sm px-4 py-3 rounded-lg">
+              Votre session a expiré. Merci de vous reconnecter.
+            </div>
+          )}
+
           {error && (
             <div className="bg-rose/10 text-rose text-sm px-4 py-3 rounded-lg">
               {error}

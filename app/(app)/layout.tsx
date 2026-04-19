@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/auth/auth-context"
 import Sidebar from "@/components/Sidebar"
 import { ToastProvider } from "@/components/Toaster"
 import { ThemeProvider } from "@/components/ThemeProvider"
+import { SessionGuard } from "@/components/SessionGuard"
 
 export default async function AppLayout({
   children,
@@ -19,6 +20,12 @@ export default async function AppLayout({
     <AuthProvider initialUser={session.user}>
       <ThemeProvider>
         <ToastProvider>
+          {/*
+            SessionGuard patches window.fetch to redirect to /login on 401
+            from /api/* — covers all the ad-hoc fetch calls scattered
+            across feature pages without having to wrap each one.
+          */}
+          <SessionGuard />
           <div className="flex min-h-screen">
             <Sidebar />
             <main className="flex-1 overflow-y-auto p-8 bg-creme">{children}</main>
