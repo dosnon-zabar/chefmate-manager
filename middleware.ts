@@ -43,12 +43,20 @@ async function isSessionValid(request: NextRequest): Promise<boolean> {
     if (!apiToken) return false
 
     // Decode embedded admin token WITHOUT verifying signature (we don't have
-    // admin's secret), just to read its `exp` claim.
+    // admin's secret), just to read a few claims.
     const adminClaims = decodeJwt(apiToken)
+
+    // Expired admin token → our session is de facto dead.
     if (typeof adminClaims.exp === "number") {
       const nowSec = Math.floor(Date.now() / 1000)
       if (adminClaims.exp < nowSec) return false
     }
+
+    // Admin tokens signed before the session_version migration (2026-04-19)
+    // are missing this claim and would be rejected by admin on every API
+    // call. Treat them as invalid here too so the user gets a clean
+    // redirect to /login instead of cascading 401s.
+    if (typeof adminClaims.session_version !== "number") return false
 
     return true
   } catch {
@@ -79,6 +87,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  const hadCookie = !!request.cookies.get(SESSION_COOKIE_NAME)?.value
   const sessionValid = await isSessionValid(request)
 
   // API routes
@@ -97,17 +106,34 @@ export async function middleware(request: NextRequest) {
 
   // BO pages
   if (PUBLIC_PAGE_PATHS.some((p) => pathname.startsWith(p))) {
-    // If the user is already logged in and hits /login, redirect to the home.
-    if (sessionValid && pathname === "/login") {
+    // If the user is already logged in and hits /login, redirect home.
+    // Exception: `?expired=1` means the (app)/layout just rejected them
+    // because admin revoked their apiToken. The cookie is still
+    // locally-valid but server-revoked — Server Components can't clear
+    // cookies, so we need to let them stay on /login long enough to
+    // re-auth (which will replace the cookie). Without this exception,
+    // the layout would redirect → middleware redirects back → infinite
+    // loop.
+    if (
+      sessionValid &&
+      pathname === "/login" &&
+      request.nextUrl.searchParams.get("expired") !== "1"
+    ) {
       return NextResponse.redirect(new URL("/", request.url))
     }
     return NextResponse.next()
   }
 
   if (!sessionValid) {
-    // Clear the cookie on the way to /login so the user lands on a clean
-    // state (no more ghost session).
-    const response = NextResponse.redirect(new URL("/login", request.url))
+    // Differentiate "cookie was there but invalid" (session expired/revoked)
+    // from "no cookie at all" (first visit): the first case deserves a
+    // "session expirée" banner, the second is just a vanilla login prompt.
+    const loginUrl = hadCookie
+      ? new URL("/login?expired=1", request.url)
+      : new URL("/login", request.url)
+    const response = NextResponse.redirect(loginUrl)
+    // Clear the cookie on the way so the user lands on a clean state
+    // (no more ghost session).
     response.cookies.set(SESSION_COOKIE_NAME, "", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

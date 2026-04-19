@@ -27,24 +27,23 @@ import { usePathname } from "next/navigation"
 const ORIGINAL_FETCH_KEY = "__chefmate_session_guard_patched__"
 
 /**
- * Paths that legitimately return 401 for anonymous users and that the
- * client handles on its own. Don't let the interceptor redirect on those.
+ * The guard only runs on protected pages (pathname early-return below),
+ * so any 401 from a same-origin `/api/*` signals a dead session. No
+ * "excluded" list — if the page the user is on requires auth and the
+ * server replies 401, we redirect. On the /login page we never install
+ * the interceptor in the first place.
  */
-const EXCLUDED_PATHS = ["/api/session"]
-
-function isExcluded(url: string): boolean {
-  // Only run on same-origin /api/* paths. External fetches are ignored.
+function isSameOriginApi(url: string): boolean {
   if (url.startsWith("http://") || url.startsWith("https://")) {
     try {
       const u = new URL(url)
-      if (u.origin !== window.location.origin) return true
-      return EXCLUDED_PATHS.some((p) => u.pathname === p)
+      if (u.origin !== window.location.origin) return false
+      return u.pathname.startsWith("/api/")
     } catch {
-      return true
+      return false
     }
   }
-  if (!url.startsWith("/api/")) return true
-  return EXCLUDED_PATHS.some((p) => url === p)
+  return url.startsWith("/api/")
 }
 
 export function SessionGuard() {
@@ -80,7 +79,7 @@ export function SessionGuard() {
                 ? input.url
                 : ""
 
-        if (!isExcluded(url)) {
+        if (isSameOriginApi(url)) {
           // Hard navigation to /login?expired=1. A toast on the current
           // page wouldn't be visible because the nav wipes React state
           // immediately — the URL param lets the login page display the
