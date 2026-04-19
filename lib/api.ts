@@ -13,7 +13,9 @@
  * so that the session cookie never leaves the server side.
  */
 
+import { cookies } from "next/headers"
 import { readSession } from "./session"
+import { SESSION_COOKIE_NAME } from "./session"
 
 const BASE_URL = process.env.CHEFMATE_API_URL || "http://localhost:3000/api/v1"
 
@@ -72,6 +74,21 @@ async function baseFetch<T>(
   }
 
   if (!res.ok) {
+    // 401 from admin = our session/apiToken got revoked on its side (logout
+    // elsewhere, password change, session_version bump, user deactivated).
+    // Clear the manager session cookie so the user lands back on /login on
+    // their next request. Best-effort: fails silently in read-only contexts
+    // (Server Components), where the next Route Handler / middleware pass
+    // will clean up instead.
+    if (res.status === 401) {
+      try {
+        const cookieStore = await cookies()
+        cookieStore.delete(SESSION_COOKIE_NAME)
+      } catch {
+        // read-only cookie context — ignore
+      }
+    }
+
     const payload = (parsed || {}) as ApiErrorPayload
     throw new ApiError(
       payload.error || `HTTP ${res.status}`,
