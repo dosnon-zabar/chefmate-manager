@@ -62,7 +62,7 @@ function LoginPageBody({ expired }: { expired: boolean }) {
         <div className="text-center mb-8">
           <img
             src="/chefmate-logo.svg"
-            alt="ChefMate"
+            alt="Brigades"
             className="h-10 mx-auto mb-3"
           />
           <p className="text-xs uppercase tracking-[0.2em] text-brun-light/60">

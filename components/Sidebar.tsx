@@ -283,7 +283,7 @@ export default function Sidebar() {
       <div className="px-6 pt-6 pb-2 mb-4">
         <img
           src="/chefmate-logo.svg"
-          alt="ChefMate"
+          alt="Brigades"
           className="h-8 brightness-0 invert"
         />
         <span className="block text-[10px] uppercase tracking-[0.2em] text-white/40 mt-1">
