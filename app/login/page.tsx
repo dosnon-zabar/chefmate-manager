@@ -2,6 +2,7 @@
 
 import { Suspense, useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { getAdminBase } from "@/lib/admin-url"
 
 // Next 15/16 requires a Suspense boundary around any component that
 // reads useSearchParams() or the static prerender fails at build time.
@@ -144,6 +145,21 @@ function LoginPageBody({ expired }: { expired: boolean }) {
           >
             {pending ? "Connexion..." : "Se connecter"}
           </button>
+
+          {/*
+            Le flow de reset vit sur le BO admin (authority de l'auth), donc
+            on envoie le user vers l'URL admin absolue. getAdminBase() se
+            résout à http://localhost:3000 en dev et https://admin.brigades.fr
+            en prod.
+          */}
+          <div className="text-center pt-1">
+            <a
+              href={`${getAdminBase()}/mot-de-passe-oublie`}
+              className="text-xs text-brun-light hover:text-orange transition-colors"
+            >
+              Mot de passe oublié ?
+            </a>
+          </div>
         </form>
       </div>
     </div>
