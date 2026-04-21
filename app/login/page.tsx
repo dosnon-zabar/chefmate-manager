@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Suspense, useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
@@ -144,6 +145,20 @@ function LoginPageBody({ expired }: { expired: boolean }) {
           >
             {pending ? "Connexion..." : "Se connecter"}
           </button>
+
+          {/*
+            Flow reset dédié à manager (pages locales + proxies manager
+            qui appellent admin). Le lien dans l'email pointera vers
+            /reset-password de manager, pas d'admin.
+          */}
+          <div className="text-center pt-1">
+            <Link
+              href="/mot-de-passe-oublie"
+              className="text-xs text-brun-light hover:text-orange transition-colors"
+            >
+              Mot de passe oublié ?
+            </Link>
+          </div>
         </form>
       </div>
     </div>

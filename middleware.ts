@@ -3,10 +3,11 @@ import type { NextRequest } from "next/server"
 import { jwtVerify, decodeJwt } from "jose"
 import { SESSION_COOKIE_NAME } from "@/lib/session"
 
-const PUBLIC_PAGE_PATHS = ["/login"]
+const PUBLIC_PAGE_PATHS = ["/login", "/mot-de-passe-oublie", "/reset-password"]
 
 const API_PUBLIC_PATHS = [
   "/api/session", // login / logout / me (reads cookie itself)
+  "/api/auth/reset-password", // proxies vers admin (pas d'auth nécessaire)
 ]
 
 function getSecret() {
