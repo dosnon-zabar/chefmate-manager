@@ -1,8 +1,8 @@
 "use client"
 
+import Link from "next/link"
 import { Suspense, useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { getAdminBase } from "@/lib/admin-url"
 
 // Next 15/16 requires a Suspense boundary around any component that
 // reads useSearchParams() or the static prerender fails at build time.
@@ -147,18 +147,17 @@ function LoginPageBody({ expired }: { expired: boolean }) {
           </button>
 
           {/*
-            Le flow de reset vit sur le BO admin (authority de l'auth), donc
-            on envoie le user vers l'URL admin absolue. getAdminBase() se
-            résout à http://localhost:3000 en dev et https://admin.brigades.fr
-            en prod.
+            Flow reset dédié à manager (pages locales + proxies manager
+            qui appellent admin). Le lien dans l'email pointera vers
+            /reset-password de manager, pas d'admin.
           */}
           <div className="text-center pt-1">
-            <a
-              href={`${getAdminBase()}/mot-de-passe-oublie`}
+            <Link
+              href="/mot-de-passe-oublie"
               className="text-xs text-brun-light hover:text-orange transition-colors"
             >
               Mot de passe oublié ?
-            </a>
+            </Link>
           </div>
         </form>
       </div>
